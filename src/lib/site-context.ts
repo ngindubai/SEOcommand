@@ -5,6 +5,8 @@
  */
 const SITE_CONTEXT_ROUTES = [
   "/domain",
+  "/pages",
+  "/health",
   "/rankings",
   "/keyword-strategy",
   "/serp-intelligence",
@@ -61,10 +63,10 @@ export function hrefWithScope(href: string, scope: string): string {
   if (url.pathname === "/sites/new" || url.searchParams.get("workspace") === "global") return href;
   if (scope === "portfolio") return href;
   if (scope.startsWith("group:")) {
-    if (!["/portfolio", "/action-centre", "/work", "/outcomes", "/notifications"].includes(url.pathname)) return href;
+    if (!["/portfolio", "/action-centre", "/work", "/outcomes", "/notifications", "/performance"].includes(url.pathname)) return href;
     url.searchParams.set("scope", scope);
   } else {
-    if (!requiresSiteContext(url.pathname) && !["/portfolio", "/research", "/reports", "/action-centre", "/ai-visibility", "/work", "/outcomes", "/notifications"].includes(url.pathname)) return href;
+    if (!requiresSiteContext(url.pathname) && !["/portfolio", "/research", "/reports", "/performance", "/action-centre", "/ai-visibility", "/work", "/outcomes", "/notifications", "/performance"].includes(url.pathname)) return href;
     url.searchParams.set("site", scope);
   }
   return `${url.pathname}${url.search}${url.hash}`;
@@ -73,7 +75,7 @@ export function hrefWithScope(href: string, scope: string): string {
 /** A deliberate website switch preserves the tool, but clears record-specific links. */
 export function switchScopeHref(pathname: string, params: URLSearchParams, scope: string): string {
   const next = new URLSearchParams(params);
-  for (const key of ["site", "scope", "domain", "item", "evidence", "mapping", "issue", "page"]) next.delete(key);
+  for (const key of ["site", "scope", "domain", "item", "evidence", "mapping", "issue", "page", "url", "cause"]) next.delete(key);
   const singleSite = scope !== "portfolio" && !scope.startsWith("group:");
   let path = pathname;
   if (/^\/sites\/(?!new)[^/]+/.test(path)) {

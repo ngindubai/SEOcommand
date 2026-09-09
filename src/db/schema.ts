@@ -208,6 +208,25 @@ export const platformJobs = pgTable(
   }),
 );
 
+/** Additive workspace evidence. Each test keeps its own record; preferences and
+ * watch entries have stable keys. Existing snapshots and workflows stay intact. */
+export const commandRecords = pgTable("command_records", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  siteSlug: text("site_slug").notNull(),
+  kind: text("kind").notNull(),
+  recordKey: text("record_key").notNull(),
+  status: text("status").notNull().default("saved"),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull().default({}),
+  nextRunAt: timestamp("next_run_at"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  recordKey: uniqueIndex("command_record_key").on(t.siteSlug, t.kind, t.recordKey),
+  siteKind: index("command_site_kind").on(t.siteSlug, t.kind, t.createdAt),
+  due: index("command_record_due").on(t.kind, t.status, t.nextRunAt),
+}));
+
 export const rankTrackingKeywords = pgTable(
   "rank_tracking_keywords",
   {

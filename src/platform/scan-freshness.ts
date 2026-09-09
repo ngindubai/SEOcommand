@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { hasDatabase } from "@/sync/store";
 import { SCAN_MODULES } from "./scan-policy";
@@ -16,6 +16,8 @@ const DATASETS: Record<ScanModule, string[]> = {
   ai: ["ai_prompts", "ai_crawler_audit"],
   local: [],
   reliability: [],
+  indexing: [],
+  speed: [],
 };
 
 /** Read collection metadata only. Queued jobs and provider task IDs are not updates. */
@@ -42,6 +44,8 @@ export async function scanModuleFreshness(siteSlug: string): Promise<Record<Scan
     const iso = date.toISOString();
     if (!result[module].lastUpdatedAt || iso > result[module].lastUpdatedAt!) result[module].lastUpdatedAt = iso;
   }
+  const checks = await db().select({ kind: schema.commandRecords.kind, at: schema.commandRecords.updatedAt }).from(schema.commandRecords).where(and(eq(schema.commandRecords.siteSlug, siteSlug), eq(schema.commandRecords.status, "completed"), inArray(schema.commandRecords.kind, ["indexing", "speed"]))).orderBy(desc(schema.commandRecords.updatedAt)).limit(100);
+  for (const check of checks) if (check.kind === "indexing" || check.kind === "speed") record(check.kind, check.at);
   for (const snapshot of snapshots) {
     const provenance = (snapshot.provenance ?? {}) as { collectedAt?: string; mode?: string };
     if (provenance.mode === "demo") continue;

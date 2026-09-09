@@ -4,7 +4,8 @@ import type { DomainSyncReport, SyncTiers } from "@/sync/engine";
 import { queueBrowserCrawl } from "./advanced-crawler";
 import { checkReliability } from "./reliability";
 import { getManagedSite } from "./site-store";
-import { FULL_SCAN_MODULES, tiersForModules } from "./scan-policy";
+import { FULL_SCAN_MODULES, LEGACY_SCAN_MODULES, tiersForModules } from "./scan-policy";
+import { runAdditionalModules } from "./command-scan-modules";
 import type { ScanModule } from "./types";
 
 export interface PlatformJobSummary {
@@ -42,7 +43,7 @@ export async function processPlatformJobs(
     try {
       const requested = Array.isArray(job.progress.modules)
         ? job.progress.modules.filter((value): value is ScanModule => typeof value === "string" && FULL_SCAN_MODULES.includes(value as ScanModule))
-        : FULL_SCAN_MODULES;
+        : LEGACY_SCAN_MODULES;
       const [claimed] = await db().update(schema.platformJobs).set({
         status: "running",
         attempts: job.attempts + 1,
@@ -57,6 +58,7 @@ export async function processPlatformJobs(
       if (!progressUpdate.length) continue;
       if (errors.length) throw new Error(errors.map((item) => `${item.dataset}: ${item.note}`).join("; "));
       const site = await getManagedSite(job.siteSlug);
+      if (site) await runAdditionalModules(site, requested);
       if (site && requested.includes("technical")) await queueBrowserCrawl(job.siteSlug, site.crawlMaxPages);
       if (site && requested.includes("reliability")) await checkReliability(site);
       await db().transaction(async (tx) => {
@@ -79,7 +81,7 @@ export async function processPlatformJobs(
       completed++;
     } catch (error) {
       const note = error instanceof Error ? error.message.slice(0, 1000) : String(error).slice(0, 1000);
-      const terminal = job.attempts >= 2 || /Payment Required|credentials|budget|daily limit|forbidden|permission/i.test(note);
+      const terminal = job.attempts >= 2 || /Review required|Payment Required|credentials|budget|daily limit|forbidden|permission/i.test(note);
       await db().transaction(async (tx) => {
         await tx.update(schema.platformJobs).set({ status: terminal ? "failed" : "queued", attempts: job.attempts + 1, runAfter: new Date(Date.now() + 5 * 60_000), lastError: note }).where(and(eq(schema.platformJobs.id, job.id), eq(schema.platformJobs.status, "running")));
         if (terminal && job.kind === "initial_site_scan") await tx.update(schema.siteProfiles).set({ lifecycleStatus: "error", updatedAt: new Date() }).where(eq(schema.siteProfiles.slug, job.siteSlug));

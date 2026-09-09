@@ -3,16 +3,18 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Activity, ArrowDownRight, ArrowUpRight, ChevronRight, Download, FileText, Globe2, Layers3, RefreshCw, Search, TrendingUp, type LucideIcon } from "lucide-react";
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useDomain } from "@/components/shell/domain-context";
 import { Card, Skeleton } from "@/components/ui/primitives";
-import { useLivePortfolio, usePriorityTasks, useScopedLive } from "@/lib/use-live";
+import { useLivePortfolio, usePriorityTasks, useScopedLive, useJson } from "@/lib/use-live";
 import { compactNumber, fullNumber } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import type { SiteCommand, TimelineEntry } from "@/lib/command-model";
 import type { DS, GscTimeseriesPoint } from "@/lib/live";
 import { analyticsPeriod, searchPeriod } from "@/lib/reporting";
 import { percentageChange, searchSummary } from "@/lib/dashboard-data";
 import { PriorityTasks } from "@/components/dashboard/priority-tasks";
+import { DataHealthSummary, NextActions, SiteBriefing, PortfolioDataHealth } from "@/components/command/overview-additions";
 import { SiteScanCentre } from "@/components/dashboard/site-scan-centre";
 import world from "@/components/dashboard/world-dots.json";
 import styles from "@/components/dashboard/dashboard.module.css";
@@ -27,7 +29,7 @@ function PanelHeading({ title, subtitle, href, icon: Icon }: { title: string; su
       <span className={styles.icon}><Icon className="h-4 w-4" strokeWidth={2} aria-hidden="true" /></span>
       <div className="min-w-0"><h2 className={styles.title}>{title}</h2>{subtitle && <p className={styles.subtitle}>{subtitle}</p>}</div>
     </div>
-    {href && <Link href={href} className={styles.report}>Explore <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>}
+    {href && <Link href={href} className={styles.report}>View results <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>}
   </div>;
 }
 function Missing({ children = "Awaiting first sync" }: { children?: React.ReactNode }) {
@@ -41,18 +43,26 @@ function Delta({ value, invert = false }: { value: number | null; invert?: boole
   const good = invert ? value < 0 : value > 0;
   return <span className={cn("inline-flex items-center gap-0.5 text-xs", value === 0 ? "text-muted" : good ? "text-success" : "text-critical")}>{value >= 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}{Math.abs(value).toFixed(1)}%</span>;
 }
-function TrendChart({ rows, dataKey, color, compare = false }: { rows: Record<string, string | number | null>[]; dataKey: string; color: string; compare?: boolean }) {
+function TrendChart({ rows, dataKey, color, compare = false, annotations = [] }: { annotations?: TimelineEntry[]; rows: Record<string, string | number | null>[]; dataKey: string; color: string; compare?: boolean }) {
+  const [showChanges, setShowChanges] = useState(true);
+  const events = annotations.filter((item) => rows.some((row) => row.date === item.date.slice(0, 10))).slice(0, 10);
   if (!rows.length) return <Missing>No daily history yet. This chart appears after a successful sync.</Missing>;
-  return <div className="h-44 w-full min-w-0" aria-label={`${dataKey} over time`} role="img"><ResponsiveContainer width="100%" height="100%" minWidth={0}>
+  return <>{events.length > 0 && <label className="mb-3 flex items-center gap-2 text-xs text-muted"><input type="checkbox" checked={showChanges} onChange={(event) => setShowChanges(event.target.checked)} />Show recorded changes</label>}<div className="h-44 w-full min-w-0" aria-label={`${dataKey} over time`} role="img"><ResponsiveContainer width="100%" height="100%" minWidth={0}>
     <LineChart data={rows} margin={{ top: 10, right: 9, bottom: 0, left: -18 }} accessibilityLayer>
       <CartesianGrid stroke="rgb(var(--border))" strokeDasharray="3 4" vertical={false} />
       <XAxis dataKey="date" tickFormatter={shortDate} axisLine={false} tickLine={false} minTickGap={36} tick={{ fill: "rgb(var(--muted))", fontSize: 10 }} dy={8} />
       <YAxis tickFormatter={compactNumber} axisLine={false} tickLine={false} tick={{ fill: "rgb(var(--muted))", fontSize: 10 }} width={58} />
       <Tooltip labelFormatter={(value) => shortDate(String(value))} contentStyle={{ background: "rgb(var(--card))", border: "1px solid rgb(var(--border))", borderRadius: 6, fontSize: 11, color: "rgb(var(--ink))" }} />
+      {showChanges && events.map((item, index) => <ReferenceLine key={item.id} x={item.date.slice(0, 10)} stroke="var(--chart-lilac)" strokeDasharray="3 4" label={{ value: String(index + 1), fontSize: 10, fill: "rgb(var(--ink))" }} />)}
       {compare && <Line name="Previous period" dataKey="previous" stroke="rgb(var(--muted) / .45)" strokeWidth={1.5} strokeDasharray="4 4" dot={false} isAnimationActive={false} />}
       <Line name={dataKey} dataKey={dataKey} stroke={color} strokeWidth={2} dot={rows.length === 1} activeDot={{ r: 4 }} isAnimationActive={false} />
     </LineChart>
-  </ResponsiveContainer></div>;
+  </ResponsiveContainer></div>{showChanges && events.length > 0 && <details className="mt-3 text-xs text-muted"><summary className="cursor-pointer">Change markers and evidence</summary><p className="mt-2">Timing alone does not prove a cause.</p>{events.map((item, index) => <Link key={item.id} href={item.href} className="mt-2 block text-purple">{index + 1}. {shortDate(item.date)} · {item.title}</Link>)}</details>}</>;
+}
+
+function SiteTrendChart(props: { site: string; rows: Record<string, string | number | null>[]; dataKey: string; color: string; compare: boolean }) {
+  const data = useJson<SiteCommand>(`/api/command?site=${encodeURIComponent(props.site)}`);
+  return <TrendChart {...props} annotations={data.data?.timeline} />;
 }
 
 export default function PortfolioPage() {
@@ -103,27 +113,28 @@ export default function PortfolioPage() {
 
   return <div className="space-y-5 animate-in">
     <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
-      <div className="flex flex-wrap items-center gap-2"><span className="font-medium text-ink">{activeGroup?.name ?? live.scopeLabel} overview</span><span className="text-muted">• {scope === "portfolio" || scope.startsWith("group:") ? `${scopedSites.length} websites` : live.scopeHost}</span>{demo && <span className="rounded border border-warning/30 bg-warning/10 px-2 py-1 text-xs text-purple">Sample data · Local preview</span>}</div>
-      <div className="flex items-center gap-2"><button onClick={() => { live.refresh(); portfolio.refresh(); priorityTasks.refresh(); }} disabled={live.loading} className="flex items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1.5 text-sm text-muted disabled:opacity-50"><RefreshCw className={cn("h-3 w-3", live.loading && "animate-spin")} /> Reload data</button><button onClick={exportSearch} disabled={!gsc.current.length} className="flex items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1.5 text-sm text-muted disabled:opacity-50"><Download className="h-3 w-3" /> Export</button></div>
+      <div className="flex flex-wrap items-center gap-2"><span className="font-medium text-ink">{suffix ? "Website overview" : `${activeGroup?.name ?? "Portfolio"} overview`}</span>{!suffix && <span className="text-muted">· {scopedSites.length} websites</span>}{demo && <span className="rounded border border-warning/30 bg-warning/10 px-2 py-1 text-xs text-purple">Sample data · Local preview</span>}</div>
+      <div className="flex items-center gap-2"><button onClick={() => { live.refresh(); portfolio.refresh(); priorityTasks.refresh(); }} disabled={live.loading} className="flex items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1.5 text-sm text-muted disabled:opacity-50"><RefreshCw className={cn("h-3 w-3", live.loading && "animate-spin")} /> Reload saved data</button><button onClick={exportSearch} disabled={!gsc.current.length} className="flex items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1.5 text-sm text-muted disabled:opacity-50"><Download className="h-3 w-3" /> Export</button></div>
     </div>
     {live.error && <p role="alert" className="text-xs text-critical">Couldn’t refresh: {live.error}. Showing the last saved data.</p>}
-    {scanCentre}
     <section aria-label="Performance summary" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       {[{ label: "Organic clicks", value: number(gscNow?.clicks), change: gsc.clickChange }, { label: "Search impressions", value: number(gscNow?.impressions), change: gsc.impressionChange }, { label: "Average search position", value: gscNow?.position?.toFixed(1) ?? "—", change: gsc.positionChange }, { label: "Organic key events", value: number(sessionNow?.conversions), change: null }].map((metric) => <Card key={metric.label} className="p-4"><p className="text-sm text-muted">{metric.label}</p><p className="mt-2 text-3xl font-semibold tracking-tight tnum">{metric.value}</p><div className="mt-2"><Delta value={metric.change} invert={metric.label.includes("position")} /></div></Card>)}
     </section>
     <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-muted"><span>Search: {period(gsc.start, gsc.end)} · {gsc.availableDays}/{days} days</span><span>{d?.gsc_timeseries?.includedDomains ?? (d?.gsc_timeseries ? 1 : 0)} of {scopedSites.length} websites contribute search data</span>{sessions.snapshotOnly && <span>Key events: saved Analytics period {period(sessions.start, sessions.end)}</span>}</div>
     {gsc.end && now - Date.parse(gsc.end) > 7 * 86400000 && <p className="rounded-md border border-warning/30 bg-warning/5 p-3 text-sm">Search data ends on {shortDate(gsc.end)}. These figures describe that saved period, not current activity. <Link href={link("/scan-centre")} className="font-semibold text-purple">Review data collection</Link></p>}
     {d?.gsc_timeseries?.coverage && <details className="text-sm"><summary className="cursor-pointer text-muted">Coverage by website</summary><ul className="mt-2 grid gap-2 sm:grid-cols-2">{d.gsc_timeseries.coverage.map((site) => <li key={site.domainId}>{sites.find((entry) => entry.id === site.domainId)?.name ?? site.domainId}: {period(site.start, site.end)}</li>)}</ul></details>}
-    <PriorityTasks tasks={priorityTasks} />
-    <Card className="p-4"><h2 className="text-lg font-bold">What changed</h2><p className="mt-1 text-xs text-muted">Clicks compared with the preceding equivalent period. Open a website to investigate its pages and queries.</p><div className="mt-3 grid gap-3 md:grid-cols-3">{[...scopedSites].filter((site) => site.searchPeriod?.clickChange != null).sort((a, b) => Math.abs(b.searchPeriod!.clickChange!) - Math.abs(a.searchPeriod!.clickChange!)).slice(0, 3).map((site) => <Link key={site.domainId} href={`/research?site=${encodeURIComponent(site.domainId)}`} className="rounded-md border border-border p-3"><span className="block text-sm font-semibold">{sites.find((entry) => entry.id === site.domainId)?.name ?? site.domainId}</span><span className="mt-1 block"><Delta value={site.searchPeriod!.clickChange} /></span></Link>)}</div>{!scopedSites.some((site) => site.searchPeriod?.clickChange != null) && <p className="mt-2 text-sm text-muted">A complete comparison period is not available yet.</p>}</Card>
-    <Card className={cn(styles.panel, styles.websites)}><PanelHeading icon={Layers3} title="Your Websites" subtitle={`${period(gsc.start, gsc.end)} · Same period as the headline · ${scopedSites.length} websites`} href="/sites" />
+    {suffix ? <NextActions site={scope} name={live.scopeLabel} bundle={live.data} tasks={priorityTasks} /> : <PriorityTasks tasks={priorityTasks} />}
+    {scanCentre}
+    {suffix ? <DataHealthSummary site={scope} /> : <PortfolioDataHealth data={portfolio.data} />}
+    {suffix ? <SiteBriefing site={scope} bundle={live.data} /> : <Card className="p-4"><h2 className="text-lg font-bold">What changed</h2><p className="mt-1 text-xs text-muted">Clicks compared with the preceding equivalent period. Open a website to investigate its pages and queries.</p><div className="mt-3 grid gap-3 md:grid-cols-3">{[...scopedSites].filter((site) => site.searchPeriod?.clickChange != null).sort((a, b) => Math.abs(b.searchPeriod!.clickChange!) - Math.abs(a.searchPeriod!.clickChange!)).slice(0, 3).map((site) => <Link key={site.domainId} href={`/research?site=${encodeURIComponent(site.domainId)}`} className="rounded-md border border-border p-3"><span className="block text-sm font-semibold">{sites.find((entry) => entry.id === site.domainId)?.name ?? site.domainId}</span><span className="mt-1 block"><Delta value={site.searchPeriod!.clickChange} /></span><span className="mt-1 block text-xs text-muted">{number(site.searchPeriod?.clicks)} clicks · {site.searchPeriod?.availableDays}/{days} days · through {site.searchPeriod?.end ?? "unavailable"}</span></Link>)}</div>{!scopedSites.some((site) => site.searchPeriod?.clickChange != null) && <p className="mt-2 text-sm text-muted">A complete comparison period is not available yet.</p>}</Card>}
+    {!suffix && <Card className={cn(styles.panel, styles.websites)}><PanelHeading icon={Layers3} title="Your Websites" subtitle={`${period(gsc.start, gsc.end)} · Same period as the headline · ${scopedSites.length} websites`} href="/sites" />
       {portfolio.error && <p className="px-5 pt-3 text-xs text-critical">Website summaries couldn’t refresh. {portfolio.error}</p>}
       {scopedSites.length ? <div className="overflow-x-auto px-5"><table className={cn("w-full text-left text-xs", styles.table)}><thead className="text-xs text-muted"><tr>{["Website", "Clicks", "Impressions", "Avg. ranking", "Click change", "Data through"].map((label) => <th key={label} className="whitespace-nowrap py-3 pr-5 font-normal">{label}</th>)}</tr></thead><tbody>{[...scopedSites].sort((a, b) => (b.searchPeriod?.clicks ?? -1) - (a.searchPeriod?.clicks ?? -1)).slice(Math.min(sitePage, Math.max(0, Math.ceil(scopedSites.length / 6) - 1)) * 6, (Math.min(sitePage, Math.max(0, Math.ceil(scopedSites.length / 6) - 1)) + 1) * 6).map((site) => <tr key={site.domainId} className="border-t border-border"><td className="py-3 pr-5"><Link href={`/portfolio?site=${encodeURIComponent(site.domainId)}`} onClick={() => setScope(site.domainId)} className="whitespace-nowrap font-medium hover:text-purple">{sites.find((s) => s.id === site.domainId)?.name ?? site.domainId}</Link></td><td className="pr-5">{number(site.searchPeriod?.clicks)}</td><td className="pr-5">{number(site.searchPeriod?.impressions)}</td><td className="pr-5">{site.searchPeriod?.position?.toFixed(1) ?? "—"}</td><td className="pr-5">{site.searchPeriod?.clickChange == null ? "—" : `${site.searchPeriod.clickChange > 0 ? "+" : ""}${site.searchPeriod.clickChange.toFixed(1)}%`}</td><td className="whitespace-nowrap pr-5 text-sm text-muted">{site.searchPeriod?.end ? `${shortDate(site.searchPeriod.end)} · ${site.searchPeriod.availableDays}/${days} days` : "Unavailable"}</td></tr>)}</tbody></table>{scopedSites.length > 6 && <div className="flex items-center justify-between border-t border-border p-3"><button className="min-h-9 px-3 text-sm disabled:opacity-40" disabled={!sitePage} onClick={() => setSitePage((page) => page - 1)}>Previous websites</button><span className="text-xs">{scopedSites.length} websites · 6 per page</span><button className="min-h-9 px-3 text-sm disabled:opacity-40" disabled={(sitePage + 1) * 6 >= scopedSites.length} onClick={() => setSitePage((page) => page + 1)}>Next websites</button></div>}</div> : <Missing>{portfolio.loading ? "Loading websites…" : "No website summaries available yet."}</Missing>}
-    </Card>
+    </Card>}
     <div className="grid gap-5 xl:grid-cols-[.85fr_1.5fr]">
       <Card className={cn("min-w-0", styles.panel, styles.search)}><PanelHeading icon={Search} title="Search Overview" subtitle={period(gsc.current[0]?.date ?? null, gsc.end)} href={link("/research")} />
         <div className="px-5 pb-4 pt-4"><div className="mb-5 grid grid-cols-3 gap-2">{([['clicks', 'Clicks'], ['impressions', 'Impressions'], ['position', 'Avg. ranking']] as const).map(([key, label]) => <button key={key} onClick={() => setSearchMetric(key)} aria-pressed={searchMetric === key} className={styles.metric}><span className="block text-sm text-muted">{label}</span><span className="my-1.5 block text-[25px] font-medium tracking-tight">{key === "position" ? gscNow?.position?.toFixed(1) ?? "—" : number(gscNow?.[key])}</span><Delta value={percentageChange(gscNow?.[key], gscBefore?.[key])} invert={key === "position"} /></button>)}</div>
-          <TrendChart rows={searchRows} dataKey={searchMetric} color={"rgb(var(--section-color))"} compare={gsc.comparable} />
+          {suffix ? <SiteTrendChart site={scope} rows={searchRows} dataKey={searchMetric} color="rgb(var(--section-color))" compare={gsc.comparable} /> : <TrendChart rows={searchRows} dataKey={searchMetric} color="rgb(var(--section-color))" compare={gsc.comparable} />}
           <p className="mt-3 text-xs text-muted">{gsc.availableDays < days ? `${gsc.availableDays} of ${days} requested days available. ` : ""}{gsc.comparable ? "Dashed line: previous period." : "Full previous period is not available."}</p><Source ds={d?.gsc_timeseries} label="Search Console" />
         </div>
       </Card>
@@ -143,8 +154,8 @@ export default function PortfolioPage() {
           <div className="min-w-0">{topCountries.length ? <div className="space-y-4">{topCountries.map((country, index) => <div key={`${country.code}-${country.country}`}><div className="mb-1.5 flex items-center justify-between gap-3 text-sm"><span className="truncate">{country.country}</span><span className="shrink-0">{number(country.sessions)} <span className="ml-2 text-muted">{countryTotal ? (country.sessions / countryTotal * 100).toFixed(1) : 0}%</span></span></div><div className="h-1.5 rounded-full bg-workspace"><div className="h-full rounded-full" style={{ width: `${countryTotal ? country.sessions / countryTotal * 100 : 0}%`, background: colors[index % 4] }} /></div></div>)}</div> : <Missing>{ga ? "No organic sessions were reported by country." : "Country data will appear after the next GA4 sync."}</Missing>}</div>
         </div><div className="border-t border-border px-5 pb-3"><Source ds={d?.ga4_dashboard ?? d?.ga4_overview} label="Google Analytics" /></div>
       </Card>
-      <Card className={cn("min-w-0", styles.panel, styles.content)}><PanelHeading icon={FileText} title="Top 10 Page Titles" subtitle={`Views from organic search · ${breakdownPeriod}`} href={link("/content")} />
-        <div className="px-5 py-4">{topPages.length ? <ol className="space-y-2.5">{topPages.map((page, index) => <li key={`${page.domainId}-${page.host}-${page.path}-${page.title}`}><Link href={`/content?site=${encodeURIComponent(page.domainId)}`} onClick={() => setScope(page.domainId)} className="group relative flex items-center justify-between gap-3 overflow-hidden rounded px-2 py-1.5 text-sm" title={`${page.title} · ${page.host}${page.path}`}><span aria-hidden="true" className="absolute inset-y-0 left-0 rounded bg-purple/5" style={{ width: `${page.views / Math.max(topPages[0]?.views ?? 1, 1) * 100}%` }} /><span className="relative flex min-w-0 items-center gap-2"><span className="w-4 shrink-0 text-xs text-muted">{index + 1}</span><span className="truncate group-hover:text-purple">{page.title}</span></span><span className="relative shrink-0 text-muted">{number(page.views)}</span></Link></li>)}</ol> : <Missing>{ga ? "No page views were reported in this period." : "Page titles will appear after the next GA4 sync."}</Missing>}<Source ds={d?.ga4_dashboard ?? d?.ga4_overview} label="Google Analytics" /></div>
+      <Card className={cn("min-w-0", styles.panel, styles.content)}><PanelHeading icon={FileText} title="Top 10 Page Titles" subtitle={`Views from organic search · ${breakdownPeriod}`} href={link("/pages")} />
+        <div className="px-5 py-4">{topPages.length ? <ol className="space-y-2.5">{topPages.map((page, index) => <li key={`${page.domainId}-${page.host}-${page.path}-${page.title}`}><Link href={`/pages?site=${encodeURIComponent(page.domainId)}&page=${encodeURIComponent(`https://${page.host}${page.path}`)}`} onClick={() => setScope(page.domainId)} className="group relative flex items-center justify-between gap-3 overflow-hidden rounded px-2 py-1.5 text-sm" title={`${page.title} · ${page.host}${page.path}`}><span aria-hidden="true" className="absolute inset-y-0 left-0 rounded bg-purple/5" style={{ width: `${page.views / Math.max(topPages[0]?.views ?? 1, 1) * 100}%` }} /><span className="relative flex min-w-0 items-center gap-2"><span className="w-4 shrink-0 text-xs text-muted">{index + 1}</span><span className="truncate group-hover:text-purple">{page.title}</span></span><span className="relative shrink-0 text-muted">{number(page.views)}</span></Link></li>)}</ol> : <Missing>{ga ? "No page views were reported in this period." : "Page titles will appear after the next GA4 sync."}</Missing>}<Source ds={d?.ga4_dashboard ?? d?.ga4_overview} label="Google Analytics" /></div>
       </Card>
     </div>
     </>}

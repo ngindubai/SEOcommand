@@ -8,12 +8,17 @@ import { syncDomain } from "../src/sync/engine";
 import { closeDb } from "../src/db";
 import { processBrowserCrawlJobs, processDueLocalSeo, queueDueBrowserCrawls, runReliabilityChecks } from "../src/platform/operational-jobs";
 
+import { processCommandChecks, queueCommandSchedules } from "../src/platform/command-jobs";
+
 let shuttingDown = false;
 process.on("SIGTERM", () => { shuttingDown = true; });
 process.on("SIGINT", () => { shuttingDown = true; });
 
 async function main() {
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required.");
+  await queueCommandSchedules();
+  await processCommandChecks(undefined, () => shuttingDown);
+  if (shuttingDown) return;
   // Pick up interrupted/manual requests without waiting for the daily provider schedule.
   const scans = await processPlatformJobs(syncDomain);
   console.log(`[orwell-operations] Requested scans: ${scans.completed}/${scans.due} complete, ${scans.failed} failed.`);

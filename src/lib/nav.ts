@@ -41,12 +41,14 @@ export const SITE_NAV: NavItem[] = [
   { href: "/rankings", label: "Rankings", icon: TrendingUp, group: "site" },
   { href: "/keyword-strategy", label: "Keyword strategy", icon: Waypoints, group: "site" },
   { href: "/competitors", label: "Competitors", icon: Swords, group: "site" },
-  { href: "/site-audit", label: "Site audit", icon: ShieldCheck, group: "site" },
+  { href: "/health", label: "Health & speed", icon: ShieldCheck, group: "site" },
   { href: "/content", label: "Content", icon: FileText, group: "site" },
   { href: "/backlinks", label: "Backlinks", icon: Link2, group: "site" },
   { href: "/ai-visibility", label: "AI visibility", icon: Sparkles, group: "site" },
   { href: "/local-seo", label: "Local SEO", icon: MapPinned, group: "site" },
   { href: "/reports", label: "Reports", icon: FileText, group: "site" },
+  { href: "/pages", label: "Pages", icon: FileText, group: "site" },
+  { href: "/performance", label: "Performance insights", icon: TrendingUp, group: "site" },
 ];
 
 export const SCAN_CENTRE: NavItem = { href: "/scan-centre", label: "Scan centre", icon: ScanLine, group: "site" };
@@ -63,9 +65,9 @@ export const AI_SECONDARY: NavItem[] = [{ href: "/ai-visibility", label: "AI vis
 export const NAV_ITEMS: NavItem[] = [...GLOBAL_NAV, ...RESEARCH_NAV.slice(1), SCAN_CENTRE, ...SITE_NAV, ...TECHNICAL_SECONDARY, ...KEYWORD_SECONDARY, ...BACKLINK_SECONDARY];
 export const PRIMARY_NAV = SITE_NAV;
 export const toolSections: { label: string; icon: LucideIcon; items: NavItem[] }[] = [
-  { label: "Performance", icon: TrendingUp, items: [SITE_NAV[0]!, SITE_NAV[1]!, SITE_NAV[2]!] },
+  { label: "Performance", icon: TrendingUp, items: [SITE_NAV[0]!, SITE_NAV[1]!, SITE_NAV[2]!, SITE_NAV[11]!, SITE_NAV[12]!] },
   { label: "Opportunities", icon: Search, items: [SITE_NAV[3]!, SITE_NAV[4]!, SITE_NAV[6]!, { href: "/recommendations", label: "Insights", icon: Sparkles, group: "site" }, ...KEYWORD_SECONDARY.slice(1)] },
-  { label: "Site health", icon: ShieldCheck, items: [SITE_NAV[5]!, ...TECHNICAL_SECONDARY, SCAN_CENTRE] },
+  { label: "Site health", icon: ShieldCheck, items: [SITE_NAV[5]!, { href: "/site-audit", label: "Detailed site audit", icon: ShieldCheck, group: "site" }, ...TECHNICAL_SECONDARY, SCAN_CENTRE] },
   { label: "Links, AI & local", icon: Globe2, items: [SITE_NAV[7]!, ...BACKLINK_SECONDARY, SITE_NAV[8]!, SITE_NAV[9]!] },
   { label: "Work", icon: ListChecks, items: [
     { href: "/action-centre", label: "Needs attention", icon: ListChecks },

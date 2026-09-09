@@ -8,6 +8,7 @@ import { getManagedSite } from "@/platform/site-store";
 import type { ScanModule } from "@/platform/types";
 import { runQueuedScan } from "@/platform/run-scan";
 import { scanModuleFreshness } from "@/platform/scan-freshness";
+import { activeCommandPlans } from "@/platform/command-store";
 import { hasDatabase } from "@/sync/store";
 
 export const runtime = "nodejs";
@@ -16,7 +17,7 @@ export const maxDuration = 300;
 
 const ScanSchema = z.object({
   siteSlug: z.string().min(1).max(120),
-  modules: z.array(z.enum(["google", "rankings", "keywords", "competitors", "technical", "backlinks", "ai", "local", "reliability"])).min(1),
+  modules: z.array(z.enum(["google", "rankings", "keywords", "competitors", "technical", "backlinks", "ai", "local", "reliability", "indexing", "speed"])).min(1),
   label: z.string().max(120).optional(),
 });
 
@@ -70,7 +71,7 @@ export async function GET(request: Request) {
     : hasDatabase()
       ? await db().select().from(schema.platformJobs).where(eq(schema.platformJobs.siteSlug, siteSlug)).orderBy(desc(schema.platformJobs.createdAt)).limit(30)
       : [];
-  const freshness = await scanModuleFreshness(siteSlug);
+  const [freshness, plans] = await Promise.all([scanModuleFreshness(siteSlug), activeCommandPlans(siteSlug)]);
   return NextResponse.json({
     ok: true,
     site: {
@@ -81,7 +82,7 @@ export async function GET(request: Request) {
       approvedMonthlyUsd: site.approvedMonthlyUsd,
       budgetLimits: site.budgetLimits,
     },
-    modules: SCAN_MODULES.map((module) => ({ ...module, ...freshness[module.id] })),
+    modules: SCAN_MODULES.map((module) => ({ ...module, ...freshness[module.id], nextRunAt: plans.filter((plan) => Array.isArray(plan.payload.modules) && plan.payload.modules.includes(module.id)).map((plan) => plan.nextRunAt).filter((value): value is string => Boolean(value)).sort()[0] ?? null })),
     fullScan: estimateScanCost(FULL_SCAN_MODULES),
     jobs: jobs.map(jobResult),
   });

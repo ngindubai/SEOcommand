@@ -8,6 +8,9 @@ import { Card, EmptyState, Skeleton, StatusBadge } from "@/components/ui/primiti
 import { DataTable, type Column } from "@/components/ui/data-table";
 import type { ManagedSite } from "@/platform/types";
 import type { PortfolioGroup } from "@/platform/types";
+import { BulkScanPlan } from "@/components/command/bulk-scan-plan";
+import { useLivePortfolio } from "@/lib/use-live";
+import { metric, stamp } from "@/components/command/shared";
 import { GroupManager } from "@/components/portfolio/group-manager";
 
 interface Connection {
@@ -27,6 +30,9 @@ function tone(status: string): "success" | "warning" | "critical" | "neutral" | 
 }
 
 export default function SitesPage() {
+  const performance = useLivePortfolio();
+  const [view, setView] = useState<"performance" | "management">("performance");
+  const [groupFilter, setGroupFilter] = useState("");
   const [sites, setSites] = useState<ManagedSite[] | null>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [groups, setGroups] = useState<PortfolioGroup[]>([]);
@@ -52,7 +58,7 @@ export default function SitesPage() {
       .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
   }, [reload]);
 
-  const columns = useMemo<Column<ManagedSite>[]>(
+  const managementColumns = useMemo<Column<ManagedSite>[]>(
     () => [
       {
         key: "groups",
@@ -135,14 +141,26 @@ export default function SitesPage() {
     [connections, groups],
   );
 
+  const headlines = new Map((performance.data?.domains ?? []).map((row) => [row.domainId, row]));
+  const performanceColumns: Column<ManagedSite>[] = [
+    managementColumns.find((column) => column.key === "site")!,
+    { key: "clicks", header: "Clicks · 28 days", sortValue: (site) => headlines.get(site.id)?.searchPeriod?.clicks ?? -1, render: (site) => <div>{metric(headlines.get(site.id)?.searchPeriod?.clicks)}<span className="block text-xs text-muted">Through {headlines.get(site.id)?.searchPeriod?.end ?? "unavailable"}</span></div> },
+    { key: "change", header: "Click change", sortValue: (site) => headlines.get(site.id)?.searchPeriod?.clickChange ?? -Infinity, render: (site) => { const change = headlines.get(site.id)?.searchPeriod?.clickChange; return change == null ? "No comparison" : <span className={change < 0 ? "text-critical" : "text-success"}>{change > 0 ? "+" : ""}{change.toFixed(1)}%</span>; } },
+    { key: "issues", header: "Priority issues", sortValue: (site) => headlines.get(site.id)?.criticalIssues ?? -1, render: (site) => <Link href={`/health?site=${site.id}`} className="font-semibold text-purple">{metric(headlines.get(site.id)?.criticalIssues)}</Link> },
+    { key: "health", header: "Data health", render: (site) => { const row = headlines.get(site.id); return <div><span className="text-xs">{!row?.lastSync ? "Not collected" : row.searchPeriod?.clicks == null || row.health == null ? "Partial data" : Date.now() - Date.parse(row.lastSync) > 7 * 86400000 ? "Needs refresh" : "Saved data available"}</span><span className="block text-xs text-muted">{stamp(row?.lastSync)}</span></div>; } },
+    { key: "action", header: "Next action", render: (site) => <Link href={headlines.get(site.id)?.criticalIssues ? `/health?site=${site.id}` : `/portfolio?site=${site.id}`} className="font-semibold text-purple">{headlines.get(site.id)?.criticalIssues ? "Review issues" : "Open overview"} →</Link> },
+  ];
+  const visibleSites = (sites ?? []).filter((site) => !groupFilter || groups.find((group) => group.id === groupFilter)?.siteSlugs.includes(site.id));
   return (
     <div className="animate-in space-y-5">
       <PageHeader
-        title="Website operations"
-        description="Onboard, approve and connect the websites in the portfolio. Designed to remain usable beyond 300 sites."
+        title="Websites"
+        description="See what changed, which websites need attention and where to work next."
         actions={<div className="flex flex-wrap gap-2"><GroupManager sites={sites ?? []} groups={groups} onChanged={() => setReload((value) => value + 1)} /><Link href="/sites/new" className="inline-flex h-9 items-center gap-1.5 rounded-md bg-purple px-3.5 text-sm font-medium text-white hover:bg-purple-deep"><Plus className="h-4 w-4" /> Add website</Link></div>}
       />
 
+      <div className="flex flex-wrap items-center gap-3"><div className="flex gap-1 rounded-md border border-border bg-card p-1">{(["performance", "management"] as const).map((item) => <button key={item} aria-pressed={view === item} onClick={() => setView(item)} className={`min-h-9 rounded px-3 text-sm capitalize ${view === item ? "bg-rail-selected font-bold text-purple" : "text-muted"}`}>{item}</button>)}</div><label className="text-sm">Group <select aria-label="Filter websites by group" value={groupFilter} onChange={(event) => setGroupFilter(event.target.value)} className="ml-2 h-10 rounded-md border border-border bg-card px-3"><option value="">All groups</option>{groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label><Link href="/performance?scope=portfolio&view=overlap" className="ml-auto text-sm font-semibold text-purple">Compare keyword overlap →</Link></div>
+      {performance.error && view === "performance" && <p className="text-sm text-critical">Performance could not refresh. <button className="underline" onClick={performance.refresh}>Retry</button></p>}
       {syntheticOnboardingComplete && (
         <div role="status" className="flex items-start gap-2 rounded-md border border-success/25 bg-success/5 px-4 py-3 text-xs text-ink">
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
@@ -158,22 +176,23 @@ export default function SitesPage() {
         <Card className="p-4">
           <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
             <div>
-              <h2 className="text-sm font-semibold text-ink">Portfolio registry</h2>
-              <p className="mt-0.5 text-2xs text-muted">{sites.length} websites · paid work runs only after per-site approval</p>
+              <h2 className="text-sm font-semibold text-ink">Your websites</h2>
+              <p className="mt-0.5 text-2xs text-muted">{sites.length} websites · choose a website to open its overview</p>
             </div>
             <Link href="/notifications" className="inline-flex items-center gap-1 text-xs font-medium text-purple hover:underline">
               Open notification centre <ExternalLink className="h-3 w-3" />
             </Link>
           </div>
           <DataTable
-            rows={sites}
-            columns={columns}
+            rows={visibleSites}
+            columns={view === "performance" ? performanceColumns : [managementColumns.find((column) => column.key === "site")!, ...managementColumns.filter((column) => column.key !== "site")]}
             searchKeys={(site) => `${site.name} ${site.host} ${site.primaryMarket} ${site.industry}`}
             pageSize={25}
             exportName="portfolio-sites"
           />
         </Card>
       )}
+      <BulkScanPlan />
     </div>
   );
 }

@@ -31,7 +31,7 @@ it("reports never collected separately from queued task metadata and sample data
     { domainSlug: "a", dataset: "keywords", capturedOn: "2026-09-09", payload: [], provenance: { mode: "demo", collectedAt: at.toISOString() } },
   ]);
   const result = await scanModuleFreshness("a");
-  expect(Object.keys(result)).toHaveLength(9);
+  expect(Object.keys(result)).toHaveLength(11);
   expect(Object.values(result).every(value => value.lastUpdatedAt === null)).toBe(true);
 });
 

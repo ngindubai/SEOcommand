@@ -3,8 +3,8 @@ import { estimateScanCost, FULL_SCAN_MODULES, SCAN_MODULES, tiersForModules } fr
 
 describe("scan-centre policy", () => {
   it("publishes one unique definition for every selectable module", () => {
-    expect(SCAN_MODULES).toHaveLength(9);
-    expect(new Set(SCAN_MODULES.map((module) => module.id)).size).toBe(9);
+    expect(SCAN_MODULES).toHaveLength(11);
+    expect(new Set(SCAN_MODULES.map((module) => module.id)).size).toBe(11);
     expect(FULL_SCAN_MODULES).toEqual(SCAN_MODULES.map((module) => module.id));
   });
 

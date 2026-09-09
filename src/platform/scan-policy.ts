@@ -10,9 +10,12 @@ export const SCAN_MODULES: { id: ScanModule; label: string; description: string;
   { id: "backlinks", label: "Backlinks", description: "Links, referring domains and history", paid: true, estimatedUsd: 0.14, color: "#16A879" },
   { id: "ai", label: "AI visibility", description: "Due prompts and crawler access", paid: true, estimatedUsd: 0.48, color: "#7137F5" },
   { id: "local", label: "Local SEO", description: "Business profile and approved map grids", paid: true, estimatedUsd: 0.09, color: "#E46A45" },
+  { id: "indexing", label: "Google indexing", description: "Reported status of up to 20 watched URLs", paid: false, estimatedUsd: 0, color: "#5965D8" },
+  { id: "speed", label: "Website speed", description: "Homepage mobile and desktop lab tests", paid: false, estimatedUsd: 0, color: "#E46A45" },
   { id: "reliability", label: "Reliability", description: "Availability, TLS, robots and sitemap", paid: false, estimatedUsd: 0, color: "#F2B544" },
 ];
 
+export const LEGACY_SCAN_MODULES = SCAN_MODULES.filter((item) => !["indexing", "speed"].includes(item.id)).map((item) => item.id);
 export const FULL_SCAN_MODULES = SCAN_MODULES.map((item) => item.id);
 
 export function estimateScanCost(modules: ScanModule[]) {

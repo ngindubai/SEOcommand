@@ -60,7 +60,9 @@ export type ScanModule =
   | "backlinks"
   | "ai"
   | "local"
-  | "reliability";
+  | "reliability"
+  | "indexing"
+  | "speed";
 
 export interface ScanRequest {
   siteSlug: string;

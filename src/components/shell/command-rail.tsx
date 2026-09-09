@@ -23,6 +23,7 @@ export function CommandRail() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { scope, activeDomain } = useDomain();
+  const siteView = Boolean(activeDomain) && !["/sites", "/sites/new", "/settings"].includes(pathname);
   const items: NavItem[] = GLOBAL_NAV;
   useEffect(() => { try { setPinned(window.localStorage.getItem("orwell.sidebar-pinned") !== "false"); } catch { setPinned(true); } }, []);
 
@@ -78,7 +79,7 @@ export function CommandRail() {
             const [itemPath, itemQuery] = href.split("?");
             const itemView = new URLSearchParams(itemQuery ?? "").get("view");
             const isSite = group === "site" || requiresSiteContext(itemPath!);
-            const active = itemPath === "/research"
+            const active = itemPath === "/portfolio" && siteView ? false : itemPath === "/research"
               ? pathname === "/research" && (isSite ? Boolean(searchParams.get("site")) : !searchParams.get("site"))
               : (pathname === itemPath || pathname.startsWith(`${itemPath}/`)) && (itemView ? searchParams.get("view") === itemView : !searchParams.get("view"));
             return <Link key={`${group}:${href}`} href={navigationHref({ href, group }, scope)} onNavigate={finishNavigation} aria-label={label} aria-current={active ? "page" : undefined} className={cn(rowClass, active ? "border-purple/15 bg-rail-selected text-purple" : "border-transparent text-muted hover:bg-workspace hover:text-ink")}>
@@ -86,7 +87,7 @@ export function CommandRail() {
               <span className={labelClass} aria-hidden={!expanded}>{label}</span>
             </Link>;
           })}
-          {expanded && <div className="mt-4 border-t border-border pt-3"><div className="px-3 pb-2 text-xs font-bold text-muted">{activeDomain?.name ?? "Workspace tools"}</div>{toolSections.filter((group) => activeDomain || group.label === "Work").map((group) => <details key={`${group.label}:${group.items.some((item) => item.href.split("?")[0] === pathname)}`} open={group.items.some((item) => item.href.split("?")[0] === pathname) || undefined} className="mb-1"><summary className="cursor-pointer rounded-md px-3 py-2 text-sm font-semibold text-ink hover:bg-workspace">{group.label}</summary><div className="ml-3 border-l border-border pl-2">{group.items.map((item) => <Link key={item.href} href={navigationHref(item, scope)} onNavigate={finishNavigation} aria-current={pathname === item.href.split("?")[0] ? "page" : undefined} className="block rounded-md px-3 py-2 text-sm text-muted hover:bg-workspace aria-[current=page]:font-semibold aria-[current=page]:text-purple">{item.label}</Link>)}</div></details>)}</div>}
+          {expanded && <div className="mt-4 border-t border-border pt-3"><div className="px-3 pb-2 text-xs font-bold text-muted">{siteView ? activeDomain?.name : "Workspace tools"}</div>{toolSections.filter((group) => siteView || group.label === "Work").map((group) => <details key={`${group.label}:${group.items.some((item) => item.href.split("?")[0] === pathname)}`} open={group.items.some((item) => item.href.split("?")[0] === pathname) || undefined} className="mb-1"><summary className="cursor-pointer rounded-md px-3 py-2 text-sm font-semibold text-ink hover:bg-workspace">{group.label}</summary><div className="ml-3 border-l border-border pl-2">{group.items.map((item) => <Link key={item.href} href={navigationHref(item, scope)} onNavigate={finishNavigation} aria-current={pathname === item.href.split("?")[0] ? "page" : undefined} className="block rounded-md px-3 py-2 text-sm text-muted hover:bg-workspace aria-[current=page]:font-semibold aria-[current=page]:text-purple">{item.label}</Link>)}</div></details>)}</div>}
         </nav>
         <div className="mt-2 flex shrink-0 flex-col gap-1 border-t border-border px-2 py-3">
           <button ref={portfolioButtonRef} onClick={() => setPortfolioOpen(!portfolioOpen)} aria-label="Websites and groups" aria-controls={portfolioOpen ? "portfolio-navigation" : undefined} aria-expanded={portfolioOpen} className={cn(rowClass, "border-transparent", portfolioOpen ? "bg-rail-selected text-purple" : "text-muted hover:bg-workspace hover:text-ink")}>

@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, LogOut, Moon, Search, Sun, Command, ChevronRight, Sparkles } from "lucide-react";
-import Link from "next/link";
+import { LogOut, Moon, Search, Sun, Command, ChevronRight } from "lucide-react";
 import { useDomain } from "./domain-context";
 import { GLOBAL_NAV, RESEARCH_NAV, SITE_NAV, toolSections, navigationHref, type NavItem } from "@/lib/nav";
 import { roleLabel } from "@/lib/auth";
 import { NotificationBell } from "./notification-bell";
 import { JobDrawer } from "./job-drawer";
 import { Modal } from "@/components/ui/modal";
+import { AskCommand } from "@/components/command/ask-command";
 import { ProviderBalance } from "./provider-balance";
 
 interface SessionUser {
@@ -90,8 +90,7 @@ export function TopNav() {
     .split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("");
 
   return (
-    <div className="relative flex min-h-20 flex-wrap items-center gap-3 border-b border-border bg-card px-4 py-3 sm:flex-nowrap sm:px-6">
-      {pathname === "/portfolio" && <div className="mr-3 min-w-0 shrink-0"><h1 className="text-xl font-semibold tracking-tight text-ink">{activeDomain ? activeDomain.name : "Portfolio"}</h1><Link href="/sites" className="mt-1 flex items-center gap-1.5 text-2xs text-muted hover:text-purple"><ArrowLeft className="h-3 w-3" /> Back to website list</Link></div>}
+    <div className="relative flex min-h-14 flex-nowrap items-center gap-1.5 sm:gap-3 border-b border-border bg-card px-4 py-3 sm:flex-nowrap sm:px-6">
       <button
         type="button"
         onClick={() => setSearchOpen(true)}
@@ -102,11 +101,11 @@ export function TopNav() {
         <span className="hidden truncate sm:inline">Search websites, research or tools…</span>
         <span className="ml-auto hidden items-center gap-1 rounded border border-border bg-card px-1.5 py-0.5 text-2xs sm:flex"><Command className="h-3 w-3" /> K</span>
       </button>
-      <ProviderBalance />
+      <div className="hidden md:block"><ProviderBalance /></div>
       <button onClick={toggleTheme} className="rounded-md p-2.5 text-muted hover:bg-workspace hover:text-ink" aria-label={dark ? "Use light theme" : "Use dark theme"}>
         {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
       </button>
-      <Link href={activeDomain ? `/recommendations?site=${encodeURIComponent(scope)}` : "/action-centre"} className="hidden h-9 items-center gap-1.5 rounded-md border border-border bg-card px-2.5 text-xs text-ink sm:flex"><Sparkles className="h-3.5 w-3.5 text-purple" /> Insights</Link>
+      <AskCommand />
       <JobDrawer />
       <NotificationBell />
       <div className="hidden items-center gap-2 border-l border-border pl-3 sm:flex">
