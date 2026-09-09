@@ -13,6 +13,7 @@ import type { DS, GscTimeseriesPoint } from "@/lib/live";
 import { analyticsPeriod, searchPeriod } from "@/lib/reporting";
 import { percentageChange, searchSummary } from "@/lib/dashboard-data";
 import { PriorityTasks } from "@/components/dashboard/priority-tasks";
+import { SiteScanCentre } from "@/components/dashboard/site-scan-centre";
 import world from "@/components/dashboard/world-dots.json";
 import styles from "@/components/dashboard/dashboard.module.css";
 
@@ -80,6 +81,7 @@ export default function PortfolioPage() {
   const scopedSites = (portfolio.data?.domains ?? []).filter((site) => scope === "portfolio" || scope.startsWith("group:") || site.domainId === scope);
   const suffix = scope !== "portfolio" && !scope.startsWith("group:") ? `?site=${encodeURIComponent(scope)}` : "";
   const link = (path: string) => `${path}${suffix}`;
+  const scanCentre = suffix ? <SiteScanCentre key={scope} siteId={scope} /> : null;
   const demo = Object.values(d ?? {}).some((part) => part?.provenance.mode === "demo");
   const period = (start: string | null, end: string | null) => start && end ? `${shortDate(start)} – ${shortDate(end)}` : "Awaiting sync";
   const breakdownPeriod = ga ? `${period(ga.breakdownStartDate, ga.endDate)} · 28-day snapshot` : "28-day snapshot";
@@ -96,8 +98,8 @@ export default function PortfolioPage() {
     const a = document.createElement("a"); a.href = url; a.download = `seo-command-search-${gsc.end ?? "export"}.csv`; a.click(); URL.revokeObjectURL(url);
   }
 
-  if (live.loading && !live.data) return <div aria-busy="true" aria-label="Loading dashboard" className="space-y-5"><Skeleton className="h-72" /><div className="grid gap-5 lg:grid-cols-[.8fr_1.2fr]"><Skeleton className="h-80" /><Skeleton className="h-80" /></div><Skeleton className="h-72" /></div>;
-  if (live.error && !live.data) return <Card><Missing><div><p className="mb-2 text-sm font-medium text-ink">Dashboard couldn’t load</p><p>{live.error}</p><button onClick={live.refresh} className="mt-4 rounded border border-border px-4 py-2 text-purple">Try again</button></div></Missing></Card>;
+  if (live.loading && !live.data) return <div className="space-y-5">{scanCentre}<div aria-busy="true" aria-label="Loading dashboard" className="space-y-5"><Skeleton className="h-72" /><div className="grid gap-5 lg:grid-cols-[.8fr_1.2fr]"><Skeleton className="h-80" /><Skeleton className="h-80" /></div><Skeleton className="h-72" /></div></div>;
+  if (live.error && !live.data) return <div className="space-y-5">{scanCentre}<Card><Missing><div><p className="mb-2 text-sm font-medium text-ink">Dashboard couldn’t load</p><p>{live.error}</p><button onClick={live.refresh} className="mt-4 rounded border border-border px-4 py-2 text-purple">Try again</button></div></Missing></Card></div>;
 
   return <div className="space-y-5 animate-in">
     <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
@@ -105,6 +107,7 @@ export default function PortfolioPage() {
       <div className="flex items-center gap-2"><button onClick={() => { live.refresh(); portfolio.refresh(); priorityTasks.refresh(); }} disabled={live.loading} className="flex items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1.5 text-sm text-muted disabled:opacity-50"><RefreshCw className={cn("h-3 w-3", live.loading && "animate-spin")} /> Reload data</button><button onClick={exportSearch} disabled={!gsc.current.length} className="flex items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1.5 text-sm text-muted disabled:opacity-50"><Download className="h-3 w-3" /> Export</button></div>
     </div>
     {live.error && <p role="alert" className="text-xs text-critical">Couldn’t refresh: {live.error}. Showing the last saved data.</p>}
+    {scanCentre}
     <section aria-label="Performance summary" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       {[{ label: "Organic clicks", value: number(gscNow?.clicks), change: gsc.clickChange }, { label: "Search impressions", value: number(gscNow?.impressions), change: gsc.impressionChange }, { label: "Average search position", value: gscNow?.position?.toFixed(1) ?? "—", change: gsc.positionChange }, { label: "Organic key events", value: number(sessionNow?.conversions), change: null }].map((metric) => <Card key={metric.label} className="p-4"><p className="text-sm text-muted">{metric.label}</p><p className="mt-2 text-3xl font-semibold tracking-tight tnum">{metric.value}</p><div className="mt-2"><Delta value={metric.change} invert={metric.label.includes("position")} /></div></Card>)}
     </section>
