@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, lte } from "drizzle-orm";
+import { and, asc, desc, eq, lte, or, like } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { queueBrowserCrawl, runBrowserCrawl } from "./advanced-crawler";
 import { listDueLocalLocations, syncLocalLocation } from "./local-seo";
@@ -8,27 +8,28 @@ import { getManagedSite, listManagedSites } from "./site-store";
 export async function processBrowserCrawlJobs(now = new Date()) {
   const limit = Math.min(Math.max(Number(process.env.BROWSER_CRAWL_JOBS_PER_RUN ?? "1"), 1), 5);
   const jobs = await db().select().from(schema.platformJobs)
-    .where(and(eq(schema.platformJobs.kind, "browser_crawl"), eq(schema.platformJobs.status, "queued"), lte(schema.platformJobs.runAfter, now)))
-    .orderBy(asc(schema.platformJobs.createdAt)).limit(limit);
+    .where(and(eq(schema.platformJobs.kind, "browser_crawl"), eq(schema.platformJobs.status, "queued"), or(lte(schema.platformJobs.runAfter, now), like(schema.platformJobs.lastError, "browserType.launch: Executable doesn%"))))
+    .orderBy(asc(schema.platformJobs.attempts), asc(schema.platformJobs.createdAt)).limit(limit);
   let completed = 0;
   let failed = 0;
   for (const job of jobs) {
     try {
-      await db().update(schema.platformJobs).set({ status: "running", attempts: job.attempts + 1, startedAt: new Date() }).where(eq(schema.platformJobs.id, job.id));
+      const [claimed] = await db().update(schema.platformJobs).set({ status: "running", attempts: job.attempts + 1, startedAt: new Date() }).where(and(eq(schema.platformJobs.id, job.id), eq(schema.platformJobs.status, "queued"))).returning({ id: schema.platformJobs.id });
+      if (!claimed) continue;
       const site = await getManagedSite(job.siteSlug);
       if (!site) throw new Error("Website no longer exists.");
       const maxPages = Number(job.progress?.maxPages) || undefined;
       const result = await runBrowserCrawl(site, maxPages);
-      await db().update(schema.platformJobs).set({ status: "completed", completedAt: new Date(), progress: result as unknown as Record<string, unknown>, lastError: null }).where(eq(schema.platformJobs.id, job.id));
+      await db().update(schema.platformJobs).set({ status: "completed", completedAt: new Date(), progress: result as unknown as Record<string, unknown>, lastError: null }).where(and(eq(schema.platformJobs.id, job.id), eq(schema.platformJobs.status, "running")));
       completed++;
     } catch (error) {
       const terminal = job.attempts >= 2;
       await db().update(schema.platformJobs).set({
         status: terminal ? "failed" : "queued",
         attempts: job.attempts + 1,
-        runAfter: terminal ? job.runAfter : new Date(Date.now() + 60 * 60 * 1_000),
+        runAfter: terminal ? job.runAfter : new Date(Date.now() + 5 * 60 * 1_000),
         lastError: error instanceof Error ? error.message.slice(0, 1_000) : String(error).slice(0, 1_000),
-      }).where(eq(schema.platformJobs.id, job.id));
+      }).where(and(eq(schema.platformJobs.id, job.id), eq(schema.platformJobs.status, "running")));
       failed++;
     }
   }

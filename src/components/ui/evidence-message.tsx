@@ -1,4 +1,5 @@
 export function friendlyEvidenceMessage(detail: string): string {
+  if (/browserType\.launch|Executable doesn.t exist.*playwright|Please update docker image/i.test(detail)) return "The technical crawler could not start because its browser runtime needs an update. This is separate from DataForSEO. The saved crawl will resume after the worker is repaired.";
   if (/payment required|insufficient (funds|balance)|402/i.test(detail)) return "The last collection could not run because provider credit was unavailable. Check the current account balance, then review and retry the affected collection.";
   if (/403|permission.denied|forbidden/i.test(detail)) return "The data source did not allow access to this property. Check the website’s property mapping and the connected account’s permissions.";
   if (/insert into|select .* from|DATABASE_URL|postgres|sql/i.test(detail)) return "This result could not be saved. Existing saved data is still available. Review the failed run before retrying.";

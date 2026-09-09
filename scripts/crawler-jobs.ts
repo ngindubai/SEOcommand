@@ -3,6 +3,8 @@
  * crawls and local grids are bounded queues so 300 sites cannot stampede the
  * database or paid providers.
  */
+import { processPlatformJobs } from "../src/platform/jobs";
+import { syncDomain } from "../src/sync/engine";
 import { closeDb } from "../src/db";
 import { processBrowserCrawlJobs, processDueLocalSeo, queueDueBrowserCrawls, runReliabilityChecks } from "../src/platform/operational-jobs";
 
@@ -12,6 +14,11 @@ process.on("SIGINT", () => { shuttingDown = true; });
 
 async function main() {
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required.");
+  // Pick up interrupted/manual requests without waiting for the daily provider schedule.
+  const scans = await processPlatformJobs(syncDomain);
+  console.log(`[orwell-operations] Requested scans: ${scans.completed}/${scans.due} complete, ${scans.failed} failed.`);
+  for (const report of scans.reports) for (const result of report.results) if (result.status === "error") console.error(`[orwell-operations] ${report.domainId}/${result.dataset}: ${result.note}`);
+  if (shuttingDown) return;
   const reliability = await runReliabilityChecks();
   console.log(`[orwell-operations] Reliability: ${reliability.checked}/${reliability.due} checked, ${reliability.failed} failed.`);
   if (shuttingDown) return;

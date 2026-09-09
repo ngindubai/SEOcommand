@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
@@ -6,10 +6,12 @@ import { canAccessSite, hasPermission } from "@/platform/access";
 import { estimateScanCost, FULL_SCAN_MODULES, SCAN_MODULES } from "@/platform/scan-policy";
 import { getManagedSite } from "@/platform/site-store";
 import type { ScanModule } from "@/platform/types";
+import { runQueuedScan } from "@/platform/run-scan";
 import { hasDatabase } from "@/sync/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 const ScanSchema = z.object({
   siteSlug: z.string().min(1).max(120),
@@ -19,7 +21,7 @@ const ScanSchema = z.object({
 
 const ActionSchema = z.object({
   jobId: z.string().uuid(),
-  action: z.enum(["cancel", "retry"]),
+  action: z.enum(["cancel", "retry", "start"]),
 });
 
 type QaJob = {
@@ -34,6 +36,7 @@ type QaJob = {
   startedAt: string | null;
   completedAt: string | null;
   lastError: string | null;
+  runAfter?: string;
 };
 
 const qaJobs: QaJob[] = [];
@@ -46,6 +49,7 @@ function jobResult(job: typeof schema.platformJobs.$inferSelect | QaJob) {
     status: job.status,
     progress: job.progress,
     attempts: job.attempts,
+    runAfter: job.runAfter instanceof Date ? job.runAfter.toISOString() : job.runAfter,
     requestedBy: job.requestedBy,
     createdAt: job.createdAt instanceof Date ? job.createdAt.toISOString() : job.createdAt,
     startedAt: job.startedAt instanceof Date ? job.startedAt.toISOString() : job.startedAt,
@@ -125,6 +129,7 @@ export async function POST(request: Request) {
     summary: `Queued ${modules.length}-module scan.`,
     metadata: { modules, estimatedUsd: estimate.estimatedUsd },
   });
+  after(() => runQueuedScan(job!.id));
   return NextResponse.json({ ok: true, job: jobResult(job!), estimate }, { status: 202 });
 }
 
@@ -135,7 +140,7 @@ export async function PATCH(request: Request) {
     const job = qaJobs.find((item) => item.id === parsed.data.jobId);
     if (!job) return NextResponse.json({ error: "Scan not found." }, { status: 404 });
     if (!await canAccessSite(request, job.siteSlug) || !await hasPermission(request, "run_scans", job.siteSlug)) return NextResponse.json({ error: "Scan not found." }, { status: 404 });
-    job.status = parsed.data.action === "retry" ? "queued" : "cancelled";
+    job.status = parsed.data.action === "cancel" ? "cancelled" : "queued";
     job.lastError = null;
     return NextResponse.json({ ok: true, job: jobResult(job) });
   }
@@ -145,14 +150,17 @@ export async function PATCH(request: Request) {
   if (!await hasPermission(request, "run_scans", job.siteSlug)) return NextResponse.json({ error: "Run-scan permission required for this website." }, { status: 403 });
   if (parsed.data.action === "cancel" && !["queued", "running"].includes(job.status)) return NextResponse.json({ error: "Only active scans can be cancelled." }, { status: 409 });
   if (parsed.data.action === "retry" && !["failed", "cancelled"].includes(job.status)) return NextResponse.json({ error: "Only failed or cancelled scans can be retried." }, { status: 409 });
-  if (parsed.data.action === "retry") {
+  if (parsed.data.action === "start" && (job.status !== "queued" || !["site_scan", "initial_site_scan"].includes(job.kind))) return NextResponse.json({ error: "Only queued data scans can be started here." }, { status: 409 });
+  if (parsed.data.action !== "cancel" && job.kind !== "browser_crawl") {
     const site = await getManagedSite(job.siteSlug);
     const modules = (Array.isArray(job.progress.modules) ? job.progress.modules : FULL_SCAN_MODULES).filter((item): item is ScanModule => FULL_SCAN_MODULES.includes(item as ScanModule));
     if (estimateScanCost(modules).paidModules.length && site?.spendApproval !== "approved") return NextResponse.json({ error: "Approve this website’s spending limit before retrying paid tools." }, { status: 409 });
   }
-  const [updated] = await db().update(schema.platformJobs).set(parsed.data.action === "retry"
-    ? { status: "queued", runAfter: new Date(), startedAt: null, completedAt: null, lastError: null, progress: { ...job.progress, phase: "queued", completed: [] } }
+  const [updated] = await db().update(schema.platformJobs).set(parsed.data.action !== "cancel"
+    ? { status: "queued", attempts: parsed.data.action === "retry" ? 0 : job.attempts, runAfter: new Date(), startedAt: null, completedAt: null, lastError: null, progress: { ...job.progress, phase: "queued", completed: [] } }
     : { status: "cancelled", completedAt: new Date(), progress: { ...job.progress, phase: "cancelled" } }
-  ).where(eq(schema.platformJobs.id, job.id)).returning();
+  ).where(and(eq(schema.platformJobs.id, job.id), eq(schema.platformJobs.status, job.status))).returning();
+  if (!updated) return NextResponse.json({ error: "This scan changed while you were viewing it. Refresh and try again." }, { status: 409 });
+  if (parsed.data.action !== "cancel" && ["site_scan", "initial_site_scan"].includes(job.kind)) after(() => runQueuedScan(job.id));
   return NextResponse.json({ ok: true, job: jobResult(updated!) });
 }
