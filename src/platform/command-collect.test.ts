@@ -1,8 +1,10 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { inspectIndex, normalizeSpeed } from "./command-collect";
+import { collectSpeed, inspectIndex, normalizeSpeed } from "./command-collect";
+import { getGoogleAccessToken, googleConfigured } from "@/providers/google/auth";
 import type { ManagedSite } from "./types";
-vi.mock("@/providers/google/auth", () => ({ getGoogleAccessToken: vi.fn(async () => "test-token") }));
-afterEach(() => vi.unstubAllGlobals());
+vi.mock("@/providers/google/auth", () => ({ getGoogleAccessToken: vi.fn(async () => "test-token"), googleConfigured: vi.fn(() => false) }));
+vi.mock("./public-network", () => ({ assertPublicHostname: vi.fn(async () => undefined), fetchPublic: vi.fn() }));
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.clearAllMocks(); vi.mocked(googleConfigured).mockReturnValue(false); });
 it("keeps missing lab and field metrics absent; does not fabricate INP", () => {
   const result = normalizeSpeed({ lighthouseResult: { fetchTime: "2026-09-09T10:00:00Z", categories: { performance: { score: .64 } }, audits: { "largest-contentful-paint": { numericValue: 4100, score: .2, title: "LCP", displayValue: "4.1s" } } } }, "https://example.com", "mobile");
   expect(result).toMatchObject({ score: 64, lcpMs: 4100, tbtMs: null, cls: null, field: null }); expect(result).not.toHaveProperty("inp");
@@ -20,4 +22,18 @@ it("uses the authorised property for inspection and preserves Google crawl versu
   expect(result.lastCrawl).toBe("2026-08-01T10:00:00Z"); expect(result.inspectedAt).not.toBe(result.lastCrawl);
   expect(JSON.parse((fetcher.mock.calls[0] as any)[1].body)).toMatchObject({ inspectionUrl: "https://example.com/page", siteUrl: "sc-domain:example.com" });
   await expect(inspectIndex(site, "http://evil.test/")).rejects.toThrow("this website"); expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
+it("uses the existing Google connection for speed tests without shared anonymous quota", async () => {
+  vi.mocked(googleConfigured).mockReturnValue(true); vi.stubEnv("PAGESPEED_API_KEY", ""); vi.stubEnv("GOOGLE_CLOUD_PROJECT", "test-project");
+  const fetcher = vi.fn(async () => Response.json({ lighthouseResult: { categories: { performance: { score: .81 } } } })); vi.stubGlobal("fetch", fetcher);
+  expect((await collectSpeed({ host: "example.com" } as ManagedSite, "/", "mobile")).score).toBe(81);
+  expect(getGoogleAccessToken).toHaveBeenCalledWith(["openid"]);
+  expect((fetcher.mock.calls[0] as any)[1].headers).toEqual({ Authorization: "Bearer test-token", "x-goog-user-project": "test-project" });
+});
+it("prefers an explicitly configured PageSpeed key and explains quota failures", async () => {
+  vi.mocked(googleConfigured).mockReturnValue(true); vi.stubEnv("PAGESPEED_API_KEY", "test-key");
+  const fetcher = vi.fn(async () => Response.json({ error: { message: "Quota exceeded" } }, { status: 429 })); vi.stubGlobal("fetch", fetcher);
+  await expect(collectSpeed({ host: "example.com" } as ManagedSite, "/", "desktop")).rejects.toThrow("quota");
+  expect(getGoogleAccessToken).not.toHaveBeenCalled(); expect(String((fetcher.mock.calls[0] as any)[0])).toContain("key=test-key");
 });

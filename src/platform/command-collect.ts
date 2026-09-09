@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { getGoogleAccessToken } from "@/providers/google/auth";
+import { getGoogleAccessToken, googleConfigured } from "@/providers/google/auth";
 import { GA4_API, GA4_SCOPE, GSC_SCOPE } from "@/providers/google/config";
 import { assertPublicHostname, fetchPublic } from "./public-network";
 import { siteUrl, type BusinessResult, type IndexResult, type PageEvidence, type SpeedResult } from "@/lib/command-model";
@@ -19,8 +19,16 @@ export async function collectSpeed(site: ManagedSite, input: string, device: "mo
   await assertPublicHostname(new URL(url).hostname);
   const endpoint = new URL("https://www.googleapis.com/pagespeedonline/v5/runPagespeed");
   endpoint.searchParams.set("url", url); endpoint.searchParams.set("strategy", device); endpoint.searchParams.set("category", "performance");
+  const headers: Record<string, string> = {};
   if (process.env.PAGESPEED_API_KEY) endpoint.searchParams.set("key", process.env.PAGESPEED_API_KEY);
-  const response = await fetch(endpoint, { cache: "no-store", signal: AbortSignal.timeout(180000) });
+  else if (googleConfigured()) {
+    // PageSpeed supports the openid OAuth scope; reuse the configured account
+    // instead of relying on Google's shared anonymous quota.
+    try { headers.Authorization = `Bearer ${await getGoogleAccessToken(["openid"])}`; }
+    catch { throw new Error("The Google connection could not authorize speed tests. Configure a PageSpeed API key or review the connected Google account."); }
+    if (process.env.GOOGLE_CLOUD_PROJECT) headers["x-goog-user-project"] = process.env.GOOGLE_CLOUD_PROJECT;
+  }
+  const response = await fetch(endpoint, { headers, cache: "no-store", signal: AbortSignal.timeout(180000) });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(response.status === 429 ? "Google’s speed-test quota is temporarily exhausted. Retry later or configure a PageSpeed API key in the service settings." : `Speed test failed (${response.status}). ${String(body?.error?.message ?? "Retry later.").slice(0, 300)}`);
   return normalizeSpeed(body, url, device);

@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import styles from "./command.module.css";
 
@@ -8,8 +8,9 @@ export function metric(value: number | null | undefined, digits = 0) { return va
 export function Panel({ title, description, actions, children }: { title: string; description?: string; actions?: ReactNode; children: ReactNode }) { return <section className={styles.panel}><div className={styles.heading}><div><h2>{title}</h2>{description && <p>{description}</p>}</div>{actions}</div>{children}</section>; }
 export function Empty({ children }: { children: ReactNode }) { return <p className={styles.empty}>{children}</p>; }
 export function Metric({ label, value, note }: { label: string; value: string; note?: string }) { return <div className={styles.metric}><span className={styles.muted}>{label}</span><strong>{value}</strong>{note && <p className={styles.muted}>{note}</p>}</div>; }
-export function useCommandAction(refresh: () => void) {
+export function useCommandAction(refresh: () => void, context?: string) {
   const [busy, setBusy] = useState(false), [message, setMessage] = useState(""), [error, setError] = useState("");
+  useEffect(() => { setMessage(""); setError(""); }, [context]);
   async function action(input: Record<string, unknown>) {
     if (busy) return null;
     setBusy(true); setMessage(""); setError("");

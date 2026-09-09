@@ -12,7 +12,7 @@ export function HealthView({ data, view, refresh }: { data: SiteCommand; view: s
   const params = useSearchParams();
   const [url, setUrl] = useState(params.get("url") ?? `https://${data.site.host}/`), [device, setDevice] = useState<"mobile" | "desktop">("mobile");
   const [finding, setFinding] = useState<SiteFinding | null>(null), [baselineTitle, setBaselineTitle] = useState("");
-  const operation = useCommandAction(refresh), site = data.site.id;
+  const operation = useCommandAction(refresh, view), site = data.site.id;
   const check = (action: string, target = url) => operation.action({ action, site, url: target, device });
   const latest = (kind: string, target?: string) => data.records.filter((row) => row.kind === kind && (!target || urlKey(String(row.payload.url ?? ""), data.site.host) === urlKey(target, data.site.host))).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const speedRecords = latest("speed", url).filter((row) => row.payload.device === device);

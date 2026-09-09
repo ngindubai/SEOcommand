@@ -16,7 +16,7 @@ export function PerformanceView({ data, view, refresh }: { data: SiteCommand; vi
   const savedMapping = (settings?.businessEvents ?? {}) as Record<string, string>;
   const categories = [["enquiry", "Enquiries"], ["booking", "Bookings"], ["qualified_lead", "Qualified leads"]] as const;
   const [events, setEvents] = useState<Record<string, string>>(Object.fromEntries(categories.map(([id]) => [id, Object.entries(savedMapping).filter(([, category]) => category === id).map(([name]) => name).join(", ")])));
-  const action = useCommandAction(refresh), site = data.site.id;
+  const action = useCommandAction(refresh, view), site = data.site.id;
   const business = data.business;
   const end = business?.end, start = end ? new Date(Date.parse(end) - (parseInt(range) - 1) * 86400000).toISOString().slice(0, 10) : null;
   const rows = business?.rows.filter((row) => !start || row.date >= start) ?? [];
