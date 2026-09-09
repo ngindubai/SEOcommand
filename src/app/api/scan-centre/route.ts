@@ -7,6 +7,7 @@ import { estimateScanCost, FULL_SCAN_MODULES, SCAN_MODULES } from "@/platform/sc
 import { getManagedSite } from "@/platform/site-store";
 import type { ScanModule } from "@/platform/types";
 import { runQueuedScan } from "@/platform/run-scan";
+import { scanModuleFreshness } from "@/platform/scan-freshness";
 import { hasDatabase } from "@/sync/store";
 
 export const runtime = "nodejs";
@@ -69,6 +70,7 @@ export async function GET(request: Request) {
     : hasDatabase()
       ? await db().select().from(schema.platformJobs).where(eq(schema.platformJobs.siteSlug, siteSlug)).orderBy(desc(schema.platformJobs.createdAt)).limit(30)
       : [];
+  const freshness = await scanModuleFreshness(siteSlug);
   return NextResponse.json({
     ok: true,
     site: {
@@ -79,7 +81,7 @@ export async function GET(request: Request) {
       approvedMonthlyUsd: site.approvedMonthlyUsd,
       budgetLimits: site.budgetLimits,
     },
-    modules: SCAN_MODULES,
+    modules: SCAN_MODULES.map((module) => ({ ...module, ...freshness[module.id] })),
     fullScan: estimateScanCost(FULL_SCAN_MODULES),
     jobs: jobs.map(jobResult),
   });

@@ -87,7 +87,7 @@ export async function syncLocalLocation(locationId: string) {
     reviewCount: number(rating.votes_count),
     profileCompleteness: completeness,
     matched: Boolean(profile),
-    profile: profile ?? {},
+    profile: { ...profile, _collectedAt: new Date().toISOString() },
   }).onConflictDoUpdate({
     target: [schema.localSeoSnapshots.locationId, schema.localSeoSnapshots.capturedOn],
     set: { rating: sql`excluded.rating`, reviewCount: sql`excluded.review_count`, profileCompleteness: sql`excluded.profile_completeness`, matched: sql`excluded.matched`, profile: sql`excluded.profile` },
