@@ -56,6 +56,8 @@ The release delta makes no changes to database schemas, migrations, connection c
 
 Integrated validation: 200 tests across 49 files, TypeScript, ESLint and the production build pass. Browser checks confirmed the dashboard, task-to-audit navigation, independent global research, retained research approval controls and mobile layout. The local preview uses an isolated synthetic account and no live database or provider credentials.
 
+The typecheck command generates Next.js declarations before checking TypeScript, so fresh CI checkouts recognise the approved logo image without requiring a previous build. This was verified in a clean checkout with no generated Next.js files. Runtime, deployment startup and database commands are unchanged.
+
 Local implementation branch: `codex/suggest-dashboard`. The user approved release to the existing primary branch, `claude/seo-dashboard-dataforseo-112fbm`; the repository has no branch named `main`. No production or staging database was contacted or changed during preparation.
 
 The dot-map geometry is derived from https://github.com/johan/world.geo.json/blob/master/countries.geo.json; its source is retained in `world-dots.json`.
