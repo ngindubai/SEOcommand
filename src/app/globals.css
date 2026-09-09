@@ -3,29 +3,37 @@
 @tailwind utilities;
 
 :root {
-  --font-inter: "Inter", system-ui, sans-serif;
-  --accent: #335cff;
-  --accent-soft: rgba(51, 92, 255, 0.1);
-  --rail: 238 242 250;
+  --accent: #d87832;
+  --accent-soft: rgba(216, 120, 50, 0.1);
+  --brand: 184 87 30;
+  --brand-deep: 151 66 21;
+  --chart-orange: #e98b42;
+  --chart-brown: #775336;
+  --chart-blue: #56a7c3;
+  --chart-lilac: #9381d6;
+  --rail: 255 255 255;
   --nav: 255 255 255;
-  --rail-selected: 220 229 255;
-  --workspace: 245 247 251;
+  --rail-selected: 255 242 231;
+  --workspace: 250 250 250;
   --card: 255 255 255;
-  --border: 220 226 237;
-  --ink: 23 32 51;
-  --muted: 98 111 137;
+  --border: 231 231 231;
+  --ink: 32 32 32;
+  --muted: 109 109 109;
   color-scheme: light;
 }
 
 [data-theme="dark"] {
-  --rail: 14 21 37;
-  --nav: 20 29 48;
-  --rail-selected: 36 49 75;
-  --workspace: 10 16 29;
-  --card: 20 29 48;
-  --border: 48 61 85;
-  --ink: 239 243 251;
-  --muted: 158 171 196;
+  --brand: 241 166 110;
+  --brand-deep: 246 188 145;
+  --chart-brown: #d4aa86;
+  --rail: 29 28 27;
+  --nav: 29 28 27;
+  --rail-selected: 59 41 28;
+  --workspace: 22 21 20;
+  --card: 29 28 27;
+  --border: 62 59 57;
+  --ink: 245 243 241;
+  --muted: 181 176 170;
   color-scheme: dark;
 }
 
@@ -37,7 +45,9 @@ body {
 body {
   background: rgb(var(--workspace));
   color: rgb(var(--ink));
-  font-feature-settings: "tnum" 1, "cv05" 1;
+  font-family: var(--font-manrope), "Manrope", system-ui, sans-serif;
+  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -145,6 +155,13 @@ table :is(th, td) {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
+}
+
+/* Keep the approved charcoal wordmark readable on dark navigation surfaces. */
+[data-theme="dark"] .brand-logo-full {
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 0 0 6px #fff;
 }
 
 /* Client report output. The application chrome remains useful on screen, while

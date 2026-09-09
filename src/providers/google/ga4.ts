@@ -135,3 +135,36 @@ export async function ga4Channels(domainId: DomainId, days = 28): Promise<Ga4Cha
     };
   });
 }
+
+/** Dashboard history plus complete, fixed 28-day geography and page breakdowns. */
+export async function ga4Dashboard(domainId: DomainId): Promise<import("@/lib/dashboard-data").Ga4Dashboard> {
+  const { shiftDate } = await import("@/lib/dashboard-data");
+  const property = await propertyFor(domainId);
+  const endDate = shiftDate(new Date().toISOString().slice(0, 10), -1);
+  const startDate = shiftDate(endDate, -179);
+  const breakdownStartDate = shiftDate(endDate, -27);
+  const base = { dimensionFilter: ORGANIC_FILTER, keepEmptyRows: true };
+  const seriesReport = await runReport(property, {
+    ...base, dateRanges: [{ startDate, endDate }], dimensions: [{ name: "date" }],
+    metrics: ["sessions", "engagedSessions", "screenPageViews", "keyEvents"].map((name) => ({ name })),
+    orderBys: [{ dimension: { dimensionName: "date" } }], limit: 180,
+  });
+  const countryReport = await runReport(property, {
+    ...base, dateRanges: [{ startDate: breakdownStartDate, endDate }], dimensions: [{ name: "countryId" }, { name: "country" }],
+    metrics: [{ name: "sessions" }], orderBys: [{ metric: { metricName: "sessions" }, desc: true }], limit: 300,
+  });
+  const pageReport = await runReport(property, {
+    ...base, dateRanges: [{ startDate: breakdownStartDate, endDate }], dimensions: [{ name: "pageTitle" }, { name: "hostName" }, { name: "pagePath" }],
+    metrics: [{ name: "screenPageViews" }], orderBys: [{ metric: { metricName: "screenPageViews" }, desc: true }], limit: 100,
+  });
+  return {
+    startDate, endDate, breakdownStartDate, domainIds: [domainId],
+    series: (seriesReport?.rows ?? []).map((r: any) => {
+      const date = r.dimensionValues?.[0]?.value ?? "";
+      const mv = r.metricValues ?? [];
+      return { date: `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`, sessions: num(mv[0]?.value), engagedSessions: num(mv[1]?.value), views: num(mv[2]?.value), conversions: num(mv[3]?.value) };
+    }),
+    countries: (countryReport?.rows ?? []).map((r: any) => ({ code: r.dimensionValues?.[0]?.value ?? "", country: r.dimensionValues?.[1]?.value ?? "Unknown", sessions: num(r.metricValues?.[0]?.value) })),
+    pages: (pageReport?.rows ?? []).map((r: any) => ({ domainId, title: r.dimensionValues?.[0]?.value || "Untitled page", host: r.dimensionValues?.[1]?.value ?? "", path: r.dimensionValues?.[2]?.value ?? "/", views: num(r.metricValues?.[0]?.value) })),
+  };
+}

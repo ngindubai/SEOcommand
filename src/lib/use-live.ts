@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { DomainLiveBundle, PortfolioLive } from "./live";
 import { useDomain } from "@/components/shell/domain-context";
+import { actionQueueUrl, type ActionData } from "./action-queue";
 
 /**
  * Client data access for the live read-models. Small SWR-style cache: instant
@@ -41,21 +42,25 @@ export interface LiveState<T> {
   refresh: () => void;
 }
 
-function useJson<T>(url: string): LiveState<T> {
+function useJson<T>(url: string, ttlMs = TTL_MS): LiveState<T> {
   const cached = cache.get(url) as CacheEntry<T> | undefined;
   const [data, setData] = useState<T | null>(cached?.data ?? null);
+  const [dataUrl, setDataUrl] = useState(url);
   const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setError(null);
+    setDataUrl(url);
     const entry = cache.get(url) as CacheEntry<T> | undefined;
     if (entry) {
       setData(entry.data);
       setLoading(false);
-      if (Date.now() - entry.fetchedAt < TTL_MS && tick === 0) return;
+      if (Date.now() - entry.fetchedAt < ttlMs && tick === 0) return;
     } else {
+      setData(null);
       setLoading(true);
     }
     fetchJson<T>(url)
@@ -74,9 +79,20 @@ function useJson<T>(url: string): LiveState<T> {
     return () => {
       cancelled = true;
     };
-  }, [url, tick]);
+  }, [url, tick, ttlMs]);
 
-  return { data, loading, error, refresh: () => setTick((t) => t + 1) };
+  return { data: dataUrl === url ? data : cached?.data ?? null, loading: dataUrl !== url ? !cached : loading, error: dataUrl === url ? error : null, refresh: () => setTick((t) => t + 1) };
+}
+
+/** Saved alerts and workflow decisions for the selected reporting scope. */
+export function useActionQueue(scope: string): LiveState<ActionData> {
+  return useJson<ActionData>(actionQueueUrl(scope), 0);
+}
+
+/** Urgent work for the dashboard. */
+export function usePriorityTasks(scope: string): LiveState<ActionData> {
+  // Recheck saved status when returning from a working section.
+  return useJson<ActionData>(actionQueueUrl(scope, true, 4), 0);
 }
 
 /** Live snapshot bundle for one domain. */

@@ -17,7 +17,7 @@ import {
   type StoredSnapshot,
 } from "./store";
 import { aggregateBundles, PORTFOLIO_SCOPE_ID } from "./aggregate";
-import { qaDomainBundle, qaPortfolio } from "@/data/qa-fixtures";
+import { QA_SITES, qaDomainBundle, qaPortfolio } from "@/data/qa-fixtures";
 
 /**
  * Assembles API read-models from stored snapshots. Pure reads — no provider
@@ -68,8 +68,8 @@ export async function buildDomainBundle(domainId: string): Promise<DomainLiveBun
  */
 export async function buildAggregateBundle(siteSlugs?: string[]): Promise<DomainLiveBundle> {
   if (process.env.QA_SYNTHETIC === "true") {
-    const slug = siteSlugs?.[0] ?? "mortgagecompare";
-    return { ...qaDomainBundle(slug), domainId: PORTFOLIO_SCOPE_ID };
+    const sites = siteSlugs ? QA_SITES.filter((site) => siteSlugs.includes(site.id)) : QA_SITES;
+    return aggregateBundles(sites.map((site) => qaDomainBundle(site.id)));
   }
   if (!hasDatabase()) {
     return { domainId: PORTFOLIO_SCOPE_ID, lastSync: null, datasets: {} };

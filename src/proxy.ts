@@ -25,7 +25,7 @@ export async function proxy(request: NextRequest) {
   const session = await verifySessionToken(token, process.env.AUTH_SECRET);
 
   if (pathname === "/login" && session) {
-    return NextResponse.redirect(new URL("/action-centre", request.url));
+    return NextResponse.redirect(new URL("/portfolio", request.url));
   }
   if (PUBLIC_PATHS.has(pathname)) return NextResponse.next();
 

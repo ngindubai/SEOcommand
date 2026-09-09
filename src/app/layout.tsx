@@ -1,15 +1,15 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Manrope } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({
+const manrope = Manrope({
   subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-manrope",
   display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "Orwell SEO Command Centre",
+  title: "SEO Command",
   description:
     "Multi-brand SEO intelligence platform — portfolio-first rankings, audits, backlinks and AI visibility.",
 };
@@ -26,7 +26,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={manrope.variable}>
       <body>{children}</body>
     </html>
   );

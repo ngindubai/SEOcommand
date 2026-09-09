@@ -1,335 +1,163 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
-import { useRouter } from "next/navigation";
-import { CloudOff, Database, Plus } from "lucide-react";
+import { useState } from "react";
 import Link from "next/link";
-import { PageHeader } from "@/components/ui/page-header";
-import { RefreshButtons } from "@/components/shell/refresh-buttons";
-import { KpiCard } from "@/components/ui/kpi-card";
-import { Card, EmptyState, Skeleton } from "@/components/ui/primitives";
-import { DataTable, type Column } from "@/components/ui/data-table";
-import type { DomainHeadline } from "@/lib/live";
-import { useLivePortfolio } from "@/lib/use-live";
-import { compactNumber, fullNumber, percent } from "@/lib/format";
-import { relativeFromNow } from "@/lib/dates";
+import { Activity, ArrowDownRight, ArrowUpRight, ChevronRight, Download, FileText, Globe2, Layers3, RefreshCw, Search, TrendingUp, type LucideIcon } from "lucide-react";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useDomain } from "@/components/shell/domain-context";
-import { PortfolioConstellation } from "@/components/portfolio/portfolio-constellation";
+import { Card, Skeleton } from "@/components/ui/primitives";
+import { useLivePortfolio, usePriorityTasks, useScopedLive } from "@/lib/use-live";
+import { compactNumber, fullNumber } from "@/lib/format";
+import { cn } from "@/lib/cn";
+import type { DS, GscTimeseriesPoint } from "@/lib/live";
+import { percentageChange, reportingWindow, searchSummary, sessionSummary } from "@/lib/dashboard-data";
+import { PriorityTasks } from "@/components/dashboard/priority-tasks";
+import world from "@/components/dashboard/world-dots.json";
+import styles from "@/components/dashboard/dashboard.module.css";
 
-/** Leaderboard row: live headline joined with the domain registry entry. */
-interface LeaderboardRow extends DomainHeadline {
-  name: string;
-  accent: string;
-  host: string;
+const shortDate = (date: string) => new Date(`${date.slice(0, 10)}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+const number = (value: number | null | undefined) => value == null ? "—" : compactNumber(value);
+const colors = ["var(--chart-orange)", "var(--chart-brown)", "var(--chart-blue)", "var(--chart-lilac)"];
+
+function PanelHeading({ title, subtitle, href, icon: Icon }: { title: string; subtitle?: string; href?: string; icon: LucideIcon }) {
+  return <div className={styles.heading}>
+    <div className={styles.headingMain}>
+      <span className={styles.icon}><Icon className="h-4 w-4" strokeWidth={2} aria-hidden="true" /></span>
+      <div className="min-w-0"><h2 className={styles.title}>{title}</h2>{subtitle && <p className={styles.subtitle}>{subtitle}</p>}</div>
+    </div>
+    {href && <Link href={href} className={styles.report}>View report <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>}
+  </div>;
 }
-
-function num(v: number | null): string {
-  return v == null ? "—" : fullNumber(v);
+function Missing({ children = "Awaiting first sync" }: { children?: React.ReactNode }) {
+  return <div className="flex min-h-36 items-center justify-center px-6 py-8 text-center text-xs leading-relaxed text-muted">{children}</div>;
+}
+function Source({ ds, label }: { ds?: DS<unknown>; label: string }) {
+  return <p className="mt-3 text-[10px] text-muted">{ds ? `${ds.provenance.mode === "demo" ? "Sample data" : label} · ${ds.includedDomains ?? 1} ${(ds.includedDomains ?? 1) === 1 ? "website" : "websites"} · Captured ${shortDate(ds.capturedOn)}` : `${label} · Awaiting sync`}</p>;
+}
+function Delta({ value, invert = false }: { value: number | null; invert?: boolean }) {
+  if (value == null) return <span className="text-[10px] text-muted">No comparison</span>;
+  const good = invert ? value < 0 : value > 0;
+  return <span className={cn("inline-flex items-center gap-0.5 text-[10px]", value === 0 ? "text-muted" : good ? "text-success" : "text-critical")}>{value >= 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}{Math.abs(value).toFixed(1)}%</span>;
+}
+function TrendChart({ rows, dataKey, color, compare = false }: { rows: Record<string, string | number | null>[]; dataKey: string; color: string; compare?: boolean }) {
+  if (!rows.length) return <Missing>No daily history yet. This chart appears after a successful sync.</Missing>;
+  return <div className="h-44 w-full min-w-0" aria-label={`${dataKey} over time`} role="img"><ResponsiveContainer width="100%" height="100%" minWidth={0}>
+    <LineChart data={rows} margin={{ top: 10, right: 9, bottom: 0, left: -18 }} accessibilityLayer>
+      <CartesianGrid stroke="rgb(var(--border))" strokeDasharray="3 4" vertical={false} />
+      <XAxis dataKey="date" tickFormatter={shortDate} axisLine={false} tickLine={false} minTickGap={36} tick={{ fill: "rgb(var(--muted))", fontSize: 10 }} dy={8} />
+      <YAxis tickFormatter={compactNumber} axisLine={false} tickLine={false} tick={{ fill: "rgb(var(--muted))", fontSize: 10 }} width={58} />
+      <Tooltip labelFormatter={(value) => shortDate(String(value))} contentStyle={{ background: "rgb(var(--card))", border: "1px solid rgb(var(--border))", borderRadius: 6, fontSize: 11, color: "rgb(var(--ink))" }} />
+      {compare && <Line name="Previous period" dataKey="previous" stroke="rgb(var(--muted) / .45)" strokeWidth={1.5} strokeDasharray="4 4" dot={false} isAnimationActive={false} />}
+      <Line name={dataKey} dataKey={dataKey} stroke={color} strokeWidth={2} dot={rows.length === 1} activeDot={{ r: 4 }} isAnimationActive={false} />
+    </LineChart>
+  </ResponsiveContainer></div>;
 }
 
 export default function PortfolioPage() {
-  const { scope, setScope, sites, groups, activeGroup } = useDomain();
-  const router = useRouter();
+  const { range, scope, sites, activeGroup, setScope } = useDomain();
+  const live = useScopedLive();
+  const priorityTasks = usePriorityTasks(scope);
+  const portfolio = useLivePortfolio(scope.startsWith("group:") ? scope.slice(6) : undefined);
+  const [searchMetric, setSearchMetric] = useState<"clicks" | "impressions" | "position">("clicks");
+  const [sessionMetric, setSessionMetric] = useState<"sessions" | "engagedSessions" | "engagementRate" | "viewsPerSession" | "conversions">("sessions");
+  const d = live.data?.datasets;
+  const days = parseInt(range);
+  const gsc = reportingWindow(d?.gsc_timeseries?.data ?? [], days);
+  const gscNow = searchSummary(gsc.current);
+  const gscBefore = gsc.comparable ? searchSummary(gsc.previous) : null;
+  const ga = d?.ga4_dashboard?.data;
+  const sessions = reportingWindow(ga?.series ?? [], days, ga?.endDate);
+  const sessionNow = sessionSummary(sessions.current);
+  const sessionBefore = sessions.comparable ? sessionSummary(sessions.previous) : null;
+  const keywords = d?.keywords?.data;
+  const topKeywords = [...(keywords ?? [])].sort((a, b) => (a.position ?? Infinity) - (b.position ?? Infinity) || b.volume - a.volume).slice(0, 6);
+  const onpage = d?.onpage?.data;
+  const health = onpage?.healthScore;
+  const healthValue = Math.max(0, Math.min(100, health ?? 0));
+  const scopedSites = (portfolio.data?.domains ?? []).filter((site) => scope === "portfolio" || scope.startsWith("group:") || site.domainId === scope);
+  const suffix = scope !== "portfolio" && !scope.startsWith("group:") ? `?site=${encodeURIComponent(scope)}` : "";
+  const link = (path: string) => `${path}${suffix}`;
+  const demo = Object.values(d ?? {}).some((part) => part?.provenance.mode === "demo");
+  const period = (start: string | null, end: string | null) => start && end ? `${shortDate(start)} – ${shortDate(end)}` : "Awaiting sync";
+  const breakdownPeriod = ga ? `${period(ga.breakdownStartDate, ga.endDate)} · 28-day snapshot` : "28-day snapshot";
+  const searchRows = gsc.current.map((row, index) => ({ date: row.date, [searchMetric]: searchMetric === "position" ? Number(row.position.toFixed(1)) : row[searchMetric], previous: gsc.comparable ? gsc.previous[index]?.[searchMetric] ?? null : null }));
+  const sessionValue = (row: NonNullable<typeof ga>["series"][number]) => sessionMetric === "engagementRate" ? (row.sessions ? row.engagedSessions / row.sessions * 100 : 0) : sessionMetric === "viewsPerSession" ? (row.sessions ? row.views / row.sessions : 0) : row[sessionMetric];
+  const sessionRows = sessions.current.map((row, index) => ({ date: row.date, [sessionMetric]: Number(sessionValue(row).toFixed(2)), previous: sessions.comparable && sessions.previous[index] ? Number(sessionValue(sessions.previous[index]).toFixed(2)) : null }));
+  const countryTotal = ga?.countries.reduce((sum, row) => sum + row.sessions, 0) ?? 0;
+  const topCountries = ga?.countries.slice(0, 5) ?? [];
+  const topPages = ga?.pages.slice(0, 10) ?? [];
 
-  /** Open a property's landing page, scoping the app to it on the way. */
-  const openDomain = useCallback(
-    (id: string) => {
-      setScope(id);
-      router.push(`/domain/${id}`);
-    },
-    [router, setScope],
-  );
-  const { data: pm, loading, error } = useLivePortfolio(scope.startsWith("group:") ? scope.slice(6) : undefined);
+  function exportSearch() {
+    const rows = [["Date", "Clicks", "Impressions", "Average position"], ...gsc.current.map((r: GscTimeseriesPoint) => [r.date, r.clicks, r.impressions, r.position])];
+    const url = URL.createObjectURL(new Blob([rows.map((r) => r.join(",")).join("\n")], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a"); a.href = url; a.download = `seo-command-search-${gsc.end ?? "export"}.csv`; a.click(); URL.revokeObjectURL(url);
+  }
 
-  // Latest sync across all domains — null when nothing has synced yet.
-  const lastSync = useMemo(() => {
-    if (!pm) return null;
-    return pm.domains.reduce<string | null>(
-      (max, d) => (d.lastSync && (!max || d.lastSync > max) ? d.lastSync : max),
-      null,
-    );
-  }, [pm]);
+  if (live.loading && !live.data) return <div aria-busy="true" aria-label="Loading dashboard" className="space-y-5"><Skeleton className="h-72" /><div className="grid gap-5 lg:grid-cols-[.8fr_1.2fr]"><Skeleton className="h-80" /><Skeleton className="h-80" /></div><Skeleton className="h-72" /></div>;
+  if (live.error && !live.data) return <Card><Missing><div><p className="mb-2 text-sm font-medium text-ink">Dashboard couldn’t load</p><p>{live.error}</p><button onClick={live.refresh} className="mt-4 rounded border border-border px-4 py-2 text-purple">Try again</button></div></Missing></Card>;
 
-  const rows = useMemo<LeaderboardRow[]>(() => {
-    if (!pm) return [];
-    return pm.domains
-      .map((d) => {
-        const meta = sites.find((x) => x.id === d.domainId);
-        return {
-          ...d,
-          name: meta?.name ?? d.domainId,
-          accent: meta?.accent ?? "var(--accent)",
-          host: meta?.host ?? d.domainId,
-        };
-      })
-      .sort((a, b) => (b.clicks28d ?? -1) - (a.clicks28d ?? -1));
-  }, [pm, sites]);
-
-  const ga4Coverage = useMemo(() => {
-    const mapped = rows.filter((r) => r.ga4Mapped).length;
-    return { mapped, gscOnly: rows.length - mapped };
-  }, [rows]);
-
-  const awaitingSync = pm != null && pm.totals.domainsSynced === 0;
-  // KPI totals are only honest once at least one domain has synced.
-  const synced = pm != null && pm.totals.domainsSynced > 0;
-
-  const leaderboardCols: Column<LeaderboardRow>[] = [
-    {
-      key: "domain",
-      header: "Domain",
-      sortValue: (r) => r.name,
-      render: (r) => {
-        const id = sites.find((x) => x.id === r.domainId)?.id;
-        return (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => id && openDomain(id)}
-              className="flex items-center gap-2 text-left hover:underline"
-            >
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: r.accent }} />
-              <span className="font-medium text-ink">{r.name}</span>
-            </button>
-            {!r.ga4Mapped && (
-              <span className="inline-flex items-center rounded-full border border-border bg-workspace px-1.5 py-px text-2xs font-medium text-muted">
-                GSC only
-              </span>
-            )}
+  return <div className="space-y-5 animate-in">
+    <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+      <div className="flex flex-wrap items-center gap-2"><span className="font-medium text-ink">{activeGroup?.name ?? live.scopeLabel} overview</span><span className="text-muted">• {scope === "portfolio" || scope.startsWith("group:") ? `${scopedSites.length} websites` : live.scopeHost}</span>{demo && <span className="rounded border border-warning/30 bg-warning/10 px-2 py-1 text-[10px] text-purple">Sample data · Local preview</span>}</div>
+      <div className="flex items-center gap-2"><button onClick={() => { live.refresh(); portfolio.refresh(); priorityTasks.refresh(); }} disabled={live.loading} className="flex items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1.5 text-[11px] text-muted disabled:opacity-50"><RefreshCw className={cn("h-3 w-3", live.loading && "animate-spin")} /> Reload data</button><button onClick={exportSearch} disabled={!gsc.current.length} className="flex items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1.5 text-[11px] text-muted disabled:opacity-50"><Download className="h-3 w-3" /> Export</button></div>
+    </div>
+    {live.error && <p role="alert" className="text-xs text-critical">Couldn’t refresh: {live.error}. Showing the last saved data.</p>}
+    <PriorityTasks tasks={priorityTasks} />
+    <Card className={cn(styles.panel, styles.ranking)}>
+      <PanelHeading icon={TrendingUp} title="Position Tracking" subtitle="Latest ranking and audit snapshots" href={link("/rankings")} />
+      <div className="grid divide-y divide-border xl:grid-cols-[.8fr_1fr_1.7fr] xl:divide-x xl:divide-y-0">
+        <section className="px-5 py-4" aria-label="Site health">
+          <h3 className={styles.subheading}>Site Health <span className="ml-1 text-[10px] font-normal text-muted">{scope === "portfolio" || scope.startsWith("group:") ? "Average score" : "Audit score"}</span></h3>
+          <div className="relative mx-auto mt-4 h-32 max-w-60">
+            <svg viewBox="0 0 240 132" className="h-full w-full" aria-label={health == null ? "No health score" : `Site health ${health} out of 100`} role="img"><path d="M 25 115 A 95 95 0 0 1 215 115" fill="none" stroke="rgb(var(--border))" strokeWidth="18" /><path d="M 25 115 A 95 95 0 0 1 215 115" fill="none" stroke="var(--chart-orange)" strokeWidth="18" pathLength="100" strokeDasharray={`${healthValue} 100`} /><text x="120" y="99" textAnchor="middle" fill="rgb(var(--ink))" fontSize="34" fontWeight="500">{health == null ? "—" : `${health}%`}</text><text x="120" y="118" textAnchor="middle" fill="rgb(var(--muted))" fontSize="10">{health == null ? "Awaiting audit" : "Technical health"}</text></svg>
           </div>
-        );
-      },
-    },
-    {
-      key: "clicks",
-      header: "Clicks 28d",
-      align: "right",
-      sortValue: (r) => r.clicks28d ?? -1,
-      render: (r) => num(r.clicks28d),
-    },
-    {
-      key: "sessions",
-      header: "Sessions 28d",
-      align: "right",
-      sortValue: (r) => r.sessions28d ?? -1,
-      render: (r) => num(r.sessions28d),
-    },
-    {
-      key: "conversions",
-      header: "Conv. 28d",
-      align: "right",
-      sortValue: (r) => r.conversions28d ?? -1,
-      render: (r) => num(r.conversions28d),
-    },
-    {
-      key: "avgPosition",
-      header: "Avg pos.",
-      align: "right",
-      sortValue: (r) => r.avgPosition ?? -1,
-      render: (r) => (r.avgPosition == null ? "—" : r.avgPosition.toFixed(1)),
-    },
-    {
-      key: "health",
-      header: "Health",
-      align: "right",
-      sortValue: (r) => r.health ?? -1,
-      render: (r) => (r.health == null ? "—" : String(r.health)),
-    },
-    {
-      key: "authority",
-      header: "Authority",
-      align: "right",
-      sortValue: (r) => r.authority ?? -1,
-      render: (r) => (r.authority == null ? "—" : String(r.authority)),
-    },
-    {
-      key: "keywords",
-      header: "Keywords",
-      align: "right",
-      sortValue: (r) => r.keywordsTracked ?? -1,
-      render: (r) => num(r.keywordsTracked),
-    },
-    {
-      key: "critical",
-      header: "Critical",
-      align: "right",
-      sortValue: (r) => r.criticalIssues ?? -1,
-      render: (r) =>
-        r.criticalIssues == null ? (
-          <span className="text-muted">—</span>
-        ) : (
-          <span className={r.criticalIssues > 0 ? "font-medium text-critical" : "text-muted"}>
-            {r.criticalIssues}
-          </span>
-        ),
-    },
-    {
-      key: "lastSync",
-      header: "Last sync",
-      align: "right",
-      sortValue: (r) => r.lastSync ?? "",
-      render: (r) =>
-        r.lastSync ? (
-          <span
-            className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-success"
-            title={`Latest provider sync: ${r.lastSync}`}
-          >
-            <Database className="h-3 w-3" /> {relativeFromNow(r.lastSync)}
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-muted">
-            <CloudOff className="h-3 w-3" /> never
-          </span>
-        ),
-    },
-  ];
-
-  if (loading && !pm) {
-    return (
-      <div className="animate-in space-y-5">
-        <PageHeader
-          title={`${activeGroup?.name ?? "Portfolio"} Command Centre`}
-          description="Cross-domain SEO performance from live provider syncs."
-          lastSync={null}
-          loading
-        />
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <Skeleton key={i} className="h-24" />
-          ))}
+          <div className="mt-3 space-y-2 text-[11px]"><div className="flex justify-between"><span className="text-muted">Pages crawled</span><span>{number(onpage?.crawlRun?.pagesCrawled)}</span></div><Link href={link("/site-audit")} className="flex justify-between hover:text-purple"><span className="text-muted">Critical issues</span><span>{onpage ? onpage.issues.filter((issue) => issue.severity === "critical" && issue.status !== "resolved").length : "—"}</span></Link></div>
+          <Source ds={d?.onpage} label="Site audit" />
+        </section>
+        <section className="px-5 py-4" aria-label="Keyword distribution">
+          <h3 className={styles.subheading}>Keywords <span className="ml-1 text-[10px] font-normal text-muted">{keywords ? `${fullNumber(keywords.length)} tracked` : "Awaiting sync"}</span></h3>
+          <div className="mt-5 grid grid-cols-2 gap-x-5 gap-y-6">{[3, 10, 20, 100].map((rank, index) => {
+            const count = keywords?.filter((k) => k.position != null && k.position > 0 && k.position <= rank).length;
+            const before = keywords?.filter((k) => k.prevPosition != null && k.prevPosition > 0 && k.prevPosition <= rank).length;
+            const hasPrevious = keywords?.length && keywords.every((k) => k.prevPosition != null);
+            return <div key={rank}><div className="flex items-center justify-between text-[11px] text-muted"><span>Top {rank}</span><svg viewBox="0 0 28 28" className="h-6 w-6" aria-hidden="true"><circle cx="14" cy="14" r="10" fill="none" stroke="rgb(var(--border))" strokeWidth="4" /><circle cx="14" cy="14" r="10" fill="none" stroke={colors[index]} strokeWidth="4" pathLength="100" strokeDasharray={`${keywords?.length ? (count ?? 0) / keywords.length * 100 : 0} 100`} transform="rotate(-90 14 14)" /></svg></div><p className="mt-1 text-2xl font-medium tracking-tight">{number(count)}</p><p className="mt-1 text-[10px] text-muted">{hasPrevious && count != null && before != null ? `${count - before >= 0 ? "+" : ""}${count - before} since previous check` : "No previous check"}</p></div>;
+          })}</div><Source ds={d?.keywords} label="DataForSEO" />
+        </section>
+        <section className="min-w-0 px-5 py-4" aria-label="Top keywords"><div className="mb-3 flex items-center justify-between"><h3 className={styles.subheading}>Top Keywords</h3><Link href={link("/keyword-strategy")} className="text-[10px] text-muted hover:text-purple">See all →</Link></div>
+          {topKeywords.length ? <div className="overflow-x-auto"><table className={cn("w-full text-left text-[11px]", styles.table)}><thead className="text-[10px] font-normal text-muted"><tr>{["Keyword", "Intent", "Volume", "KD", "Position", "Change"].map((label) => <th key={label} className="whitespace-nowrap border-b border-border py-2 pr-3 font-normal last:pr-0">{label}</th>)}</tr></thead><tbody>{topKeywords.map((k) => { const change = k.position != null && k.prevPosition != null ? k.prevPosition - k.position : null; return <tr key={`${k.domainId}-${k.id}`} className="border-b border-border last:border-0"><td className="max-w-44 py-2.5 pr-3"><Link href={`/rankings?site=${encodeURIComponent(k.domainId)}`} onClick={() => setScope(k.domainId)} className="block truncate hover:text-purple" title={`${k.keyword} · ${k.domainId}`}>{k.keyword}</Link></td><td className="pr-3"><span title={k.intent} className="rounded bg-workspace px-1.5 py-0.5 text-[10px] text-muted">{k.intent.slice(0, 1).toUpperCase()}</span></td><td className="pr-3">{number(k.volume)}</td><td className="pr-3">{k.difficulty}</td><td className="pr-3">{k.position ?? "—"}</td><td className={change == null || change === 0 ? "text-muted" : change > 0 ? "text-success" : "text-critical"}>{change == null ? "—" : `${change > 0 ? "↑ " : change < 0 ? "↓ " : ""}${Math.abs(change)}`}</td></tr>; })}</tbody></table></div> : <Missing>No tracked keywords yet. Add keywords from the Keywords report.</Missing>}
+          <Source ds={d?.keywords} label="DataForSEO" />
+        </section>
+      </div>
+    </Card>
+    <div className="grid gap-5 xl:grid-cols-[.85fr_1.5fr]">
+      <Card className={cn("min-w-0", styles.panel, styles.search)}><PanelHeading icon={Search} title="Search Overview" subtitle={period(gsc.current[0]?.date ?? null, gsc.end)} href={link("/research")} />
+        <div className="px-5 pb-4 pt-4"><div className="mb-5 grid grid-cols-3 gap-2">{([['clicks', 'Clicks'], ['impressions', 'Impressions'], ['position', 'Avg. ranking']] as const).map(([key, label]) => <button key={key} onClick={() => setSearchMetric(key)} aria-pressed={searchMetric === key} className={styles.metric}><span className="block text-[11px] text-muted">{label}</span><span className="my-1.5 block text-[25px] font-medium tracking-tight">{key === "position" ? gscNow?.position?.toFixed(1) ?? "—" : number(gscNow?.[key])}</span><Delta value={percentageChange(gscNow?.[key], gscBefore?.[key])} invert={key === "position"} /></button>)}</div>
+          <TrendChart rows={searchRows} dataKey={searchMetric} color={"rgb(var(--section-color))"} compare={gsc.comparable} />
+          <p className="mt-3 text-[10px] text-muted">{gsc.availableDays < days ? `${gsc.availableDays} of ${days} requested days available. ` : ""}{gsc.comparable ? "Dashed line: previous period." : "Full previous period is not available."}</p><Source ds={d?.gsc_timeseries} label="Search Console" />
         </div>
-        <Skeleton className="h-80" />
-      </div>
-    );
-  }
-
-  if (error && !pm) {
-    return (
-      <div className="animate-in space-y-5">
-        <PageHeader
-          title={`${activeGroup?.name ?? "Portfolio"} Command Centre`}
-          description="Cross-domain SEO performance from live provider syncs."
-          lastSync={null}
-        />
-        <EmptyState title="Could not load live data" description={error} />
-      </div>
-    );
-  }
-
-  if (!pm) {
-    return (
-      <div className="animate-in space-y-5">
-        <PageHeader
-          title={`${activeGroup?.name ?? "Portfolio"} Command Centre`}
-          description="Cross-domain SEO performance from live provider syncs."
-          lastSync={null}
-        />
-        <EmptyState
-          title="No portfolio data available"
-          description="The live portfolio read-model returned nothing. Run a sync to populate it."
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="animate-in space-y-5">
-      <PageHeader
-        title={`${activeGroup?.name ?? "Portfolio"} Command Centre`}
-        description={activeGroup ? "Performance and risk across this group and its nested subgroups." : "Cross-domain organic performance, health and coverage — live provider data only."}
-        actions={<div className="flex items-center gap-2"><RefreshButtons /><Link href="/sites/new" className="inline-flex h-9 items-center gap-1.5 rounded-md bg-purple px-3.5 text-sm font-medium text-white hover:bg-purple-deep"><Plus className="h-4 w-4" /> Add website</Link></div>}
-        lastSync={lastSync}
-        loading={loading}
-      />
-
-      {awaitingSync && (
-        <Card className="border-warning/30 bg-warning/5 p-4">
-          <div className="flex items-start gap-3">
-            <CloudOff className="mt-0.5 h-5 w-5 shrink-0 text-[#9A6B12]" />
-            <div>
-              <h3 className="text-sm font-semibold text-ink">No sync has run yet</h3>
-              <p className="mt-1 max-w-2xl text-xs text-muted">
-                No domain in the portfolio has live data stored. The daily scheduled sync (or a
-                manual trigger from Settings → Data connections) pulls Search Console, GA4 and
-                ranking data and populates every metric on this page. Until then, all values
-                below show “—” — nothing here is estimated or simulated.
-              </p>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      <PortfolioConstellation sites={sites} groups={groups} headlines={pm.domains} />
-
-      {/* KPI row 1 — organic performance, last 28 days */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard
-          label="Organic clicks"
-          value={synced ? compactNumber(pm.totals.clicks28d) : "—"}
-          hint="Last 28 days · GSC, portfolio total"
-        />
-        <KpiCard
-          label="Impressions"
-          value={synced ? compactNumber(pm.totals.impressions28d) : "—"}
-          hint="Last 28 days · GSC, portfolio total"
-        />
-        <KpiCard
-          label="Organic sessions"
-          value={synced ? compactNumber(pm.totals.sessions28d) : "—"}
-          hint="Last 28 days · GA4-mapped domains only"
-        />
-        <KpiCard
-          label="Organic conversions"
-          value={synced ? fullNumber(pm.totals.conversions28d) : "—"}
-          hint="Last 28 days · GA4-mapped domains only"
-        />
-      </div>
-
-      {/* KPI row 2 — health & authority */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard
-          label="Avg site health"
-          value={pm.totals.avgHealth == null ? "—" : String(Math.round(pm.totals.avgHealth))}
-          hint="Across synced domains"
-        />
-        <KpiCard
-          label="Avg visibility"
-          value={pm.totals.avgVisibility == null ? "—" : percent(pm.totals.avgVisibility)}
-          hint="Search visibility index"
-        />
-        <KpiCard
-          label="Critical issues"
-          value={synced ? fullNumber(pm.totals.criticalIssues) : "—"}
-          hint="Open, portfolio total"
-        />
-        <KpiCard
-          label="Referring domains"
-          value={synced ? fullNumber(pm.totals.referringDomains) : "—"}
-          hint="Portfolio total"
-        />
-      </div>
-
-      {/* Domain leaderboard */}
-      <Card className="p-4">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-ink">Domain leaderboard</h3>
-          <span className="text-2xs text-muted">
-            {pm.totals.domainsSynced} of {rows.length} domains synced · Click a domain to open its
-            page
-          </span>
+      </Card>
+      <Card className={cn("min-w-0", styles.panel, styles.engagement)}><PanelHeading icon={Activity} title="Sessions & Engagement" subtitle={`Organic search · ${period(sessions.current[0]?.date ?? null, sessions.end)}`} href={link("/research")} />
+        <div className="px-5 pb-4 pt-4"><div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-5">{([
+          { key: "sessions", summary: "sessions", label: "Sessions" }, { key: "engagedSessions", summary: "engaged", label: "Engaged sessions" }, { key: "engagementRate", summary: "engagementRate", label: "Engagement rate" }, { key: "viewsPerSession", summary: "viewsPerSession", label: "Views / session" }, { key: "conversions", summary: "conversions", label: "Key events" },
+        ] as const).map(({ key, summary, label }) => <button key={key} onClick={() => setSessionMetric(key)} aria-pressed={sessionMetric === key} className={styles.metric}><span className="block text-[11px] text-muted">{label}</span><span className="my-1.5 block text-[25px] font-medium tracking-tight">{sessionNow == null ? "—" : summary === "engagementRate" ? `${sessionNow[summary].toFixed(1)}%` : summary === "viewsPerSession" ? sessionNow[summary].toFixed(2) : number(sessionNow[summary])}</span><Delta value={percentageChange(sessionNow?.[summary], sessionBefore?.[summary])} /></button>)}</div>
+          <TrendChart rows={sessionRows} dataKey={sessionMetric} color="rgb(var(--section-color))" compare={sessions.comparable} /><p className="mt-3 text-[10px] text-muted">{ga ? `${ga.domainIds.length} ${ga.domainIds.length === 1 ? "website" : "websites"} included. ${sessions.availableDays < days ? `${sessions.availableDays} of ${days} days available. ` : ""}${sessions.comparable ? "Dashed line: previous period." : "No complete comparison period."}` : "Daily engagement data will appear after the next GA4 sync."}</p><Source ds={d?.ga4_dashboard} label="Google Analytics" />
         </div>
-        <DataTable
-          rows={rows}
-          columns={leaderboardCols}
-          searchKeys={(r) => `${r.name} ${r.host}`}
-          pageSize={12}
-          exportName="portfolio-leaderboard"
-          emptyLabel="No domains registered."
-        />
-        <p className="mt-3 px-1 text-2xs text-muted">
-          GA4 coverage: {ga4Coverage.mapped} of {rows.length} domains have a GA4 property mapped.
-          Domains marked “GSC only” report Search Console data but no sessions or conversions.
-        </p>
       </Card>
     </div>
-  );
+    <div className="grid gap-5 xl:grid-cols-[1.7fr_1fr]">
+      <Card className={cn("min-w-0", styles.panel, styles.geography)}><PanelHeading icon={Globe2} title="Sessions by Country" subtitle={`Organic search · ${breakdownPeriod}`} />
+        <div className="grid items-center gap-6 px-5 py-5 md:grid-cols-[1.4fr_1fr]">
+          <svg viewBox="0 0 390 185" role="img" aria-label="World map; session counts are listed by country" className="mx-auto w-full max-w-xl"><g fill="rgb(var(--muted) / .2)">{world.points.map(([x, y], i) => <circle key={i} cx={x} cy={y} r="1.1" />)}</g>{topCountries.map((country, index) => { const marker = (world.markers as Record<string, number[]>)[country.code]; return marker ? <g key={`${country.code}-${country.country}`}><circle cx={marker[0]} cy={marker[1]} r="8" fill={colors[index % 4]} opacity=".16" /><circle cx={marker[0]} cy={marker[1]} r="3" fill={colors[index % 4]} /><title>{country.country}: {fullNumber(country.sessions)} sessions</title></g> : null; })}</svg>
+          <div className="min-w-0">{topCountries.length ? <div className="space-y-4">{topCountries.map((country, index) => <div key={`${country.code}-${country.country}`}><div className="mb-1.5 flex items-center justify-between gap-3 text-[11px]"><span className="truncate">{country.country}</span><span className="shrink-0">{number(country.sessions)} <span className="ml-2 text-muted">{countryTotal ? (country.sessions / countryTotal * 100).toFixed(1) : 0}%</span></span></div><div className="h-1.5 rounded-full bg-workspace"><div className="h-full rounded-full" style={{ width: `${countryTotal ? country.sessions / countryTotal * 100 : 0}%`, background: colors[index % 4] }} /></div></div>)}</div> : <Missing>{ga ? "No organic sessions were reported by country." : "Country data will appear after the next GA4 sync."}</Missing>}</div>
+        </div><div className="border-t border-border px-5 pb-3"><Source ds={d?.ga4_dashboard} label="Google Analytics" /></div>
+      </Card>
+      <Card className={cn("min-w-0", styles.panel, styles.content)}><PanelHeading icon={FileText} title="Top 10 Page Titles" subtitle={`Views from organic search · ${breakdownPeriod}`} href={link("/content")} />
+        <div className="px-5 py-4">{topPages.length ? <ol className="space-y-2.5">{topPages.map((page, index) => <li key={`${page.domainId}-${page.host}-${page.path}-${page.title}`}><Link href={`/content?site=${encodeURIComponent(page.domainId)}`} onClick={() => setScope(page.domainId)} className="group relative flex items-center justify-between gap-3 overflow-hidden rounded px-2 py-1.5 text-[11px]" title={`${page.title} · ${page.host}${page.path}`}><span aria-hidden="true" className="absolute inset-y-0 left-0 rounded bg-purple/5" style={{ width: `${page.views / Math.max(topPages[0]?.views ?? 1, 1) * 100}%` }} /><span className="relative flex min-w-0 items-center gap-2"><span className="w-4 shrink-0 text-[10px] text-muted">{index + 1}</span><span className="truncate group-hover:text-purple">{page.title}</span></span><span className="relative shrink-0 text-muted">{number(page.views)}</span></Link></li>)}</ol> : <Missing>{ga ? "No page views were reported in this period." : "Page titles will appear after the next GA4 sync."}</Missing>}<Source ds={d?.ga4_dashboard} label="Google Analytics" /></div>
+      </Card>
+    </div>
+    <Card className={cn(styles.panel, styles.websites)}><PanelHeading icon={Layers3} title="Your Websites" subtitle="Latest saved 28-day summaries · Click a website to explore" href="/sites" />
+      {portfolio.error && <p className="px-5 pt-3 text-xs text-critical">Website summaries couldn’t refresh. {portfolio.error}</p>}
+      {scopedSites.length ? <div className="overflow-x-auto px-5"><table className={cn("w-full text-left text-xs", styles.table)}><thead className="text-[10px] text-muted"><tr>{["Website", "Clicks", "Impressions", "Avg. ranking", "Health", "Last sync"].map((label) => <th key={label} className="whitespace-nowrap py-3 pr-5 font-normal">{label}</th>)}</tr></thead><tbody>{[...scopedSites].sort((a, b) => (b.clicks28d ?? -1) - (a.clicks28d ?? -1)).slice(0, 10).map((site) => <tr key={site.domainId} className="border-t border-border"><td className="py-3 pr-5"><Link href={`/portfolio?site=${encodeURIComponent(site.domainId)}`} onClick={() => setScope(site.domainId)} className="whitespace-nowrap font-medium hover:text-purple">{sites.find((s) => s.id === site.domainId)?.name ?? site.domainId}</Link></td><td className="pr-5">{number(site.clicks28d)}</td><td className="pr-5">{number(site.impressions28d)}</td><td className="pr-5">{site.avgPosition?.toFixed(1) ?? "—"}</td><td className="pr-5">{number(site.health)}</td><td className="whitespace-nowrap pr-5 text-[11px] text-muted">{site.lastSync ? shortDate(site.lastSync) : "Awaiting sync"}</td></tr>)}</tbody></table></div> : <Missing>{portfolio.loading ? "Loading websites…" : "No website summaries available yet."}</Missing>}
+    </Card>
+  </div>;
 }

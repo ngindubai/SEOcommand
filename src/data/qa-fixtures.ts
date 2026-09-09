@@ -1,3 +1,4 @@
+import { shiftDate } from "@/lib/dashboard-data";
 import type { DomainLiveBundle, PortfolioLive } from "@/lib/live";
 import type { ManagedSite, PortfolioGroup } from "@/platform/types";
 import { DEFAULT_ALERT_CHANNELS } from "@/platform/notification-defaults";
@@ -86,12 +87,33 @@ export function qaDomainBundle(siteSlug: string): DomainLiveBundle {
   const provenance = { source: "demo", collectedAt: h.lastSync!, rangeStart: "2026-07-30", rangeEnd: date, location: site.primaryMarket, device: "desktop", freshness: "fresh", mode: "demo" };
   const ds = <T>(data: T) => ({ data, capturedOn: date, provenance });
   const critical = h.criticalIssues ?? 0;
+  // Explicit QA-only history. Each current 28-day total reconciles with the headline.
+  const weights = Array.from({ length: 28 }, (_, day) => .8 + Math.sin(day * .7) * .16 + day * .01);
+  const weightTotal = weights.reduce((sum, n) => sum + n, 0);
+  const allocate = (total: number, day: number) => {
+    const before = weights.slice(0, day).reduce((sum, n) => sum + n, 0);
+    return Math.round(total * (before + weights[day]) / weightTotal) - Math.round(total * before / weightTotal);
+  };
+  const history = Array.from({ length: 180 }, (_, day) => {
+    const n = day % 28;
+    const factor = day >= 152 ? 1 : 0.76 + day / 1000;
+    const sessions = allocate(Math.round(h.sessions28d! * factor), day >= 152 ? day - 152 : n);
+    return { date: shiftDate(date, day - 179), sessions, engagedSessions: Math.round(sessions * 0.64), views: Math.round(sessions * 1.8), conversions: allocate(Math.round(h.conversions28d! * factor), day >= 152 ? day - 152 : n) };
+  });
   return {
     domainId: siteSlug, lastSync: h.lastSync,
     datasets: {
       gsc_totals: ds({ clicks: h.clicks28d!, impressions: h.impressions28d!, ctr: 4.8, position: h.avgPosition! }),
       ga4_overview: ds({ sessions: h.sessions28d!, totalUsers: 940, newUsers: 680, engagedSessions: 720, engagementRate: 61.2, conversions: h.conversions28d!, screenPageViews: 1900 }),
-      gsc_timeseries: ds(Array.from({ length: 28 }, (_, day) => ({ date: `2026-08-${String(day + 1).padStart(2, "0")}`, clicks: 22 + index * 2 + day, impressions: 480 + index * 15 + day * 6, ctr: 4.8, position: h.avgPosition! }))),
+      gsc_timeseries: ds(Array.from({ length: 56 }, (_, day) => {
+        const clicks = allocate(Math.round(h.clicks28d! * (day >= 28 ? 1 : 0.82)), day % 28);
+        const impressions = allocate(Math.round(h.impressions28d! * (day >= 28 ? 1 : 0.87)), day % 28);
+        return { date: shiftDate(date, day - 55), clicks, impressions, ctr: clicks / impressions * 100, position: h.avgPosition! + (day >= 28 ? 0 : 0.8) };
+      })),
+      ga4_dashboard: ds({ startDate: shiftDate(date, -179), endDate: date, breakdownStartDate: shiftDate(date, -27), domainIds: [site.id], series: history,
+        countries: [{ code: "US", country: "United States", sessions: Math.round(h.sessions28d! * .5) }, { code: "IN", country: "India", sessions: Math.round(h.sessions28d! * .2) }, { code: "GB", country: "United Kingdom", sessions: Math.round(h.sessions28d! * .15) }, { code: "CA", country: "Canada", sessions: Math.round(h.sessions28d! * .1) }, { code: "DE", country: "Germany", sessions: Math.round(h.sessions28d! * .05) }],
+        pages: ["Home", "Compare providers", "Pricing and plans", "Expert advice", "Our services", "Customer stories", "About us", "Frequently asked questions", "Contact our team", "Latest insights"].map((title, page) => ({ domainId: site.id, title: `${title} · ${site.name}`, host: site.host, path: page ? `/page-${page}` : "/", views: Math.round((180 + index * 20) / (1 + page * .4)) })),
+      }),
       onpage: ds({ healthScore: h.health!, breakdown: [{ category: "Indexability", weight: 0.3, score: h.health!, issues: critical }], crawlRun: { id: `qa-crawl-${index}`, domainId: site.id, startedAt: h.lastSync!, completedAt: h.lastSync!, pagesCrawled: 420 + index * 23, healthScore: h.health!, newIssues: critical, resolvedIssues: index % 3, status: "completed" }, issues: Array.from({ length: critical }, (_, issue) => ({ id: `qa-issue-${index}-${issue}`, domainId: site.id, title: issue ? "Canonical conflict" : "Blocked indexable page", category: "Indexability", severity: issue ? "high" : "critical", explanation: "Synthetic QA evidence", affectedPages: 2 + issue, samplePages: [`https://${site.host}/sample-${issue}`], evidence: "Synthetic staging signal", recommendedFix: "Review the affected template.", potentialImpact: "Search visibility", firstSeen: date, lastSeen: date, status: "open", taskId: null })) }),
       visibility_series: ds(Array.from({ length: 14 }, (_, day) => ({ date: `2026-08-${String(day + 13).padStart(2, "0")}`, value: 40 + index + day * 0.6 }))),
       position_buckets: ds([{ label: "1-3", count: 2, prevCount: 1 }, { label: "4-10", count: 7, prevCount: 6 }, { label: "11-20", count: 3, prevCount: 5 }]),

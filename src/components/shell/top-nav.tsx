@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, Moon, Search, Sun, Command, ChevronRight } from "lucide-react";
+import { ArrowLeft, LogOut, Moon, Search, Sun, Command, ChevronRight, Sparkles } from "lucide-react";
+import Link from "next/link";
 import { useDomain } from "./domain-context";
 import { GLOBAL_NAV, RESEARCH_NAV, SITE_NAV, type NavItem } from "@/lib/nav";
 import { roleLabel } from "@/lib/auth";
@@ -17,7 +18,7 @@ interface SessionUser {
 }
 
 export function TopNav() {
-  const { sites, groups, activeDomain, setScope } = useDomain();
+  const { sites, groups, activeDomain, setScope, scope } = useDomain();
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -27,7 +28,7 @@ export function TopNav() {
 
   useEffect(() => {
     const stored = window.localStorage.getItem("orwell.theme");
-    const nextDark = stored === "dark" || (!stored && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    const nextDark = stored === "dark";
     setDark(nextDark);
     document.documentElement.dataset.theme = nextDark ? "dark" : "light";
     fetch("/api/auth/session").then((response) => response.ok ? response.json() : null)
@@ -73,6 +74,7 @@ export function TopNav() {
   }, [groups, query, sites]);
 
   function openSite(id: string) {
+    setSearchOpen(false);
     setScope(id);
     router.push(`/sites/${id}`);
   }
@@ -89,12 +91,13 @@ export function TopNav() {
     .split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("");
 
   return (
-    <div className="relative flex h-16 items-center gap-3 border-b border-border bg-card px-4 sm:px-6">
+    <div className="relative flex min-h-20 flex-wrap items-center gap-3 border-b border-border bg-card px-4 py-3 sm:flex-nowrap sm:px-6">
+      {pathname === "/portfolio" && <div className="mr-3 min-w-40 shrink-0"><h1 className="text-xl font-semibold tracking-tight text-ink">My Dashboard</h1><Link href="/sites" className="mt-1 flex items-center gap-1.5 text-2xs text-muted hover:text-purple"><ArrowLeft className="h-3 w-3" /> Back to website list</Link></div>}
       <button
         type="button"
         onClick={() => setSearchOpen(true)}
-        className="flex h-10 min-w-0 flex-1 items-center gap-3 rounded-md border border-border bg-workspace px-3 text-left text-sm text-muted transition-colors hover:border-purple/40 sm:max-w-lg"
-        aria-label="Search websites, research and tools"
+        className="flex h-9 min-w-0 flex-1 items-center gap-3 rounded-md border border-border bg-card px-3 text-left text-xs text-muted transition-colors hover:border-purple/40"
+        aria-label="Search websites, groups and modules"
       >
         <Search className="h-4 w-4 shrink-0" />
         <span className="truncate">Search websites, research or tools…</span>
@@ -104,6 +107,7 @@ export function TopNav() {
       <button onClick={toggleTheme} className="rounded-md p-2.5 text-muted hover:bg-workspace hover:text-ink" aria-label={dark ? "Use light theme" : "Use dark theme"}>
         {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
       </button>
+      <Link href={activeDomain ? `/recommendations?site=${encodeURIComponent(scope)}` : "/action-centre"} className="hidden h-9 items-center gap-1.5 rounded-md border border-border bg-card px-2.5 text-xs text-ink sm:flex"><Sparkles className="h-3.5 w-3.5 text-purple" /> Insights</Link>
       <JobDrawer />
       <NotificationBell />
       <div className="hidden items-center gap-2 border-l border-border pl-3 sm:flex">
@@ -121,7 +125,7 @@ export function TopNav() {
           <div className="absolute left-4 right-4 top-[72px] z-50 mx-auto max-w-2xl overflow-hidden rounded-lg border border-border bg-card shadow-pop sm:left-6 sm:right-auto sm:w-[640px]">
             <div className="flex items-center gap-3 border-b border-border px-4 py-3">
               <Search className="h-5 w-5 text-purple" />
-              <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} className="min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-muted" placeholder="Jump to a website, research area or tool" />
+              <input aria-label="Search websites, groups and tools" autoFocus value={query} onChange={(event) => setQuery(event.target.value)} className="min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-muted" placeholder="Jump to a website, group or tool" />
               <button onClick={() => setSearchOpen(false)} className="rounded border border-border px-2 py-1 text-2xs text-muted">Esc</button>
             </div>
             <div className="max-h-[60vh] overflow-y-auto p-2">
@@ -129,7 +133,7 @@ export function TopNav() {
                 {matches.sites.map((site) => <SearchResult key={site.id} color={site.accent} title={site.name} subtitle={site.host} onClick={() => openSite(site.id)} />)}
               </SearchSection>
               <SearchSection label="Groups">
-                {matches.groups.map((group) => <SearchResult key={group.id} color={group.color} title={group.name} subtitle={`${group.siteSlugs.length} websites`} onClick={() => { setScope(`group:${group.id}`); router.push("/portfolio"); }} />)}
+                {matches.groups.map((group) => <SearchResult key={group.id} color={group.color} title={group.name} subtitle={`${group.siteSlugs.length} websites`} onClick={() => { setSearchOpen(false); setScope(`group:${group.id}`); router.push(`/portfolio?scope=${encodeURIComponent(`group:${group.id}`)}`); }} />)}
               </SearchSection>
               <SearchSection label="Tools">
                 {matches.modules.map((item) => <SearchResult key={`${item.href}:${item.label}`} title={item.label} subtitle={item.group === "site" ? (activeDomain ? `Open for ${activeDomain.name}` : "Choose a website first") : item.group === "research" || item.href === "/research" ? "Global research workspace" : "Open workspace"} onClick={() => openTool(item)} />)}
@@ -146,6 +150,6 @@ function SearchSection({ label, children }: { label: string; children: React.Rea
   return <div className="mb-2"><div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-muted">{label}</div>{children}</div>;
 }
 
-function SearchResult({ color = "#335CFF", title, subtitle, onClick }: { color?: string; title: string; subtitle: string; onClick: () => void }) {
+function SearchResult({ color = "#d87832", title, subtitle, onClick }: { color?: string; title: string; subtitle: string; onClick: () => void }) {
   return <button onClick={onClick} className="flex w-full items-center gap-3 rounded-md px-2 py-2 text-left hover:bg-workspace"><span className="h-2.5 w-2.5 rounded-full" style={{ background: color }} /><span className="min-w-0 flex-1"><span className="block truncate text-sm font-semibold text-ink">{title}</span><span className="block truncate text-2xs text-muted">{subtitle}</span></span><ChevronRight className="h-4 w-4 text-muted" /></button>;
 }

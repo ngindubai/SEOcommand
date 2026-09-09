@@ -72,8 +72,10 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
   // scope from racing and overwriting a directly opened website workspace.
   useEffect(() => {
     const requested = siteIdFromLocation(pathname, searchParams.get("site"));
+    const requestedScope = searchParams.get("scope");
     const saved = window.localStorage.getItem("orwell.scope");
-    if (requested && requested !== "new") setScope(requested as Scope);
+    if (requested) setScope(requested as Scope);
+    else if ((pathname === "/portfolio" || pathname === "/action-centre") && requestedScope) setScope(requestedScope as Scope);
     else if (pathname === "/portfolio" && saved?.startsWith("group:")) setScope(saved as Scope);
     else setScope("portfolio");
     setScopeReady(true);
@@ -84,7 +86,7 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
     if (scopeReady) window.localStorage.setItem("orwell.scope", scope);
   }, [scope, scopeReady]);
 
-  // Reflect the active domain accent as a CSS variable for theming.
+  // Website identity stays in its marker; the application keeps one shared theme.
   const activeDomain = scope === "portfolio" || scope.startsWith("group:")
     ? null
     : (sites.find((site) => site.id === scope) ?? null);
@@ -92,9 +94,8 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
     ? groups.find((group) => group.id === scope.slice(6)) ?? null
     : null;
   useEffect(() => {
-    const accent = activeDomain?.accent ?? activeGroup?.color ?? "#335CFF";
-    document.documentElement.style.setProperty("--accent", accent);
-    document.documentElement.style.setProperty("--accent-soft", accent + "1a");
+    const accent = activeDomain?.accent ?? activeGroup?.color ?? "#d87832";
+    document.documentElement.style.setProperty("--site-accent", accent);
   }, [activeDomain, activeGroup]);
 
   const value = useMemo<DomainState>(

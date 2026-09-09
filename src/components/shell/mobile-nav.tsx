@@ -1,5 +1,6 @@
 "use client";
 
+import { BrandLogo } from "@/components/brand/brand-logo";
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -7,6 +8,9 @@ import { Menu, X, Layers, Circle, Folder } from "lucide-react";
 import { NAV_ITEMS } from "@/lib/nav";
 import { useDomain } from "./domain-context";
 import { cn } from "@/lib/cn";
+import { requiresSiteContext } from "@/lib/site-context";
+
+const mobileLinks = Array.from(new Map(NAV_ITEMS.map((item) => [`${item.group === "site" ? "site" : "global"}:${item.href}`, item])).values());
 
 /** Accessible mobile navigation drawer (hidden on lg+). */
 export function MobileNav() {
@@ -31,7 +35,7 @@ export function MobileNav() {
 
   function selectGroup(id: string) {
     setScope(`group:${id}`);
-    router.push("/portfolio");
+    router.push(`/portfolio?scope=${encodeURIComponent(`group:${id}`)}`);
     setOpen(false);
   }
 
@@ -60,43 +64,67 @@ export function MobileNav() {
         <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="Navigation">
           <div className="absolute inset-0 bg-ink/30" onClick={() => setOpen(false)} aria-hidden />
           <div className="animate-drawer absolute left-0 top-0 flex h-full w-[84%] max-w-sm flex-col border-r border-border bg-card text-ink">
-            <div className="flex items-center justify-between px-4 py-4">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-purple">
-                  <Layers className="h-4 w-4" />
-                </div>
-                <span className="text-sm font-semibold">Orwell</span>
-              </div>
+            <div className="flex shrink-0 items-center justify-between px-4 py-4">
+              <button onClick={selectPortfolio} aria-label="SEO Command dashboard"><BrandLogo className="w-52 max-w-full" /></button>
               <button onClick={() => setOpen(false)} aria-label="Close" className="rounded-md p-1.5 hover:bg-nav">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="px-3 pb-2">
-              <div className="px-2 pb-1 text-2xs font-bold uppercase tracking-wider text-muted">Portfolio</div>
-              <button
-                onClick={selectPortfolio}
-                className={cn(
-                  "mb-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm",
-                  scope === "portfolio" ? "bg-rail-selected" : "hover:bg-workspace",
-                )}
-              >
-                <Layers className="h-4 w-4" /> Portfolio
-              </button>
-              {groups.map((group) => (
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-4">
+              <nav aria-label="Dashboard and tools" className="space-y-1 border-b border-border px-3 pb-4">
+                <div className="px-2 pb-1 text-2xs font-bold uppercase tracking-wider text-muted">Navigation</div>
+                {mobileLinks.map((item) => {
+                  const Icon = item.icon;
+                  const [itemPath, itemQuery] = item.href.split("?");
+                  const itemView = new URLSearchParams(itemQuery ?? "").get("view");
+                  const isSite = item.group === "site" || requiresSiteContext(itemPath!);
+                  const active = itemPath === "/research"
+                    ? pathname === "/research" && (isSite ? Boolean(searchParams.get("site")) : !searchParams.get("site"))
+                    : (pathname === itemPath || pathname.startsWith(`${itemPath}/`)) && (itemView ? searchParams.get("view") === itemView : !searchParams.get("view"));
+                  return (
+                    <Link
+                      key={`${item.group}:${item.href}`}
+                      href={scope !== "portfolio" && !scope.startsWith("group:") && isSite ? `${item.href}${item.href.includes("?") ? "&" : "?"}site=${encodeURIComponent(scope)}` : item.href}
+                      onClick={() => setOpen(false)}
+                      aria-current={active ? "page" : undefined}
+                      className={cn(
+                        "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-semibold",
+                        active ? "bg-rail-selected text-purple" : "text-muted hover:bg-workspace hover:text-ink",
+                      )}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </nav>
+
+              <div className="px-3 pb-2 pt-4">
+                <div className="px-2 pb-1 text-2xs font-bold uppercase tracking-wider text-muted">Portfolio</div>
                 <button
-                  key={group.id}
-                  onClick={() => selectGroup(group.id)}
+                  onClick={selectPortfolio}
                   className={cn(
-                    "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm",
-                    scope === `group:${group.id}` ? "bg-rail-selected" : "hover:bg-workspace",
+                    "mb-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm",
+                    scope === "portfolio" ? "bg-rail-selected" : "hover:bg-workspace",
                   )}
                 >
-                  <Folder className="h-3.5 w-3.5" style={{ color: group.color, fill: `${group.color}40` }} />
-                  {group.name}
+                  <Layers className="h-4 w-4" /> Portfolio
                 </button>
-              ))}
-              {sites.map((d) => {
+                {groups.map((group) => (
+                  <button
+                    key={group.id}
+                    onClick={() => selectGroup(group.id)}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm",
+                      scope === `group:${group.id}` ? "bg-rail-selected" : "hover:bg-workspace",
+                    )}
+                  >
+                    <Folder className="h-3.5 w-3.5" style={{ color: group.color, fill: `${group.color}40` }} />
+                    {group.name}
+                  </button>
+                ))}
+                {sites.map((d) => {
                 const primary = groups.find((group) => group.primarySiteSlugs?.includes(d.id))?.id
                   ?? groups.find((group) => group.siteSlugs.includes(d.id))?.id
                   ?? "";
@@ -111,32 +139,8 @@ export function MobileNav() {
                   </select>
                 </div>;
               })}
-            </div>
+              </div>
 
-            <div className="mt-2 flex-1 overflow-y-auto px-3">
-              <div className="px-2 pb-1 text-2xs font-bold uppercase tracking-wider text-muted">Tools</div>
-              {NAV_ITEMS.map((item) => {
-                const Icon = item.icon;
-                const [itemPath, itemQuery] = item.href.split("?");
-                const itemView = new URLSearchParams(itemQuery ?? "").get("view");
-                const active = itemPath === "/research"
-                  ? pathname === "/research" && (item.group === "site" ? Boolean(searchParams.get("site")) : !searchParams.get("site"))
-                  : pathname.startsWith(itemPath!) && (itemView ? searchParams.get("view") === itemView : true);
-                return (
-                  <Link
-                    key={`${item.group}:${item.href}:${item.label}`}
-                    href={scope !== "portfolio" && !scope.startsWith("group:") && item.group === "site" ? `${item.href}?site=${scope}` : item.href}
-                    onClick={() => setOpen(false)}
-                    className={cn(
-                      "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm",
-                      active ? "bg-ink text-card" : "text-muted hover:bg-workspace hover:text-ink",
-                    )}
-                  >
-                    <Icon className="h-4 w-4" />
-                    {item.label}
-                  </Link>
-                );
-              })}
             </div>
           </div>
         </div>

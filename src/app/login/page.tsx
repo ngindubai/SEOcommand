@@ -1,12 +1,13 @@
 "use client";
 
+import { BrandLogo } from "@/components/brand/brand-logo";
 import { FormEvent, useState } from "react";
 import { Activity, ArrowRight, CheckCircle2, LockKeyhole, Sparkles } from "lucide-react";
 
 function safeNext(): string {
-  if (typeof window === "undefined") return "/action-centre";
+  if (typeof window === "undefined") return "/portfolio";
   const value = new URLSearchParams(window.location.search).get("next");
-  return value?.startsWith("/") && !value.startsWith("//") ? value : "/action-centre";
+  return value?.startsWith("/") && !value.startsWith("//") ? value : "/portfolio";
 }
 
 export default function LoginPage() {
@@ -37,9 +38,9 @@ export default function LoginPage() {
   return (
     <main className="grid min-h-screen bg-workspace lg:grid-cols-[minmax(0,1.2fr)_minmax(420px,0.8fr)]">
       <section className="signal-grid relative hidden overflow-hidden bg-ink p-12 text-white lg:flex lg:flex-col lg:justify-between">
-        <div className="flex items-center gap-3"><span className="grid h-10 w-10 grid-cols-2 gap-1 rounded-md bg-white/10 p-2"><span className="rounded-[2px] bg-[#335CFF]" /><span className="rounded-[2px] bg-[#12B8C4]" /><span className="rounded-[2px] bg-[#FF6B5E]" /><span className="rounded-[2px] bg-[#F2B544]" /></span><div><div className="text-sm font-extrabold">Orwell Command</div><div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/45">SEO operations</div></div></div>
+        <div className="w-fit rounded-md bg-white px-4 py-3"><BrandLogo className="w-64" /></div>
         <div className="max-w-xl">
-          <div className="mb-6 flex items-center gap-3"><span className="h-1 w-12 rounded-full bg-[#12B8C4]" /><span className="text-xs font-bold uppercase tracking-[0.14em] text-[#7FE4EA]">Signal to action</span></div>
+          <div className="mb-6 flex items-center gap-3"><span className="h-1 w-12 rounded-full bg-[#E8873A]" /><span className="text-xs font-bold uppercase tracking-[0.14em] text-[#EFA46B]">Signal to action</span></div>
           <h1 className="text-balance text-5xl font-extrabold leading-[1.04] tracking-[-0.05em]">See the portfolio clearly. Act on what matters.</h1>
           <p className="mt-6 max-w-lg text-base leading-7 text-white/60">One operating system for search performance, technical health, AI visibility, local presence and approved growth work.</p>
           <div className="mt-10 grid grid-cols-3 gap-3"><LoginSignal icon={<Activity />} label="Monitor" color="#12B8C4" /><LoginSignal icon={<Sparkles />} label="Prioritise" color="#F2B544" /><LoginSignal icon={<CheckCircle2 />} label="Verify" color="#16A879" /></div>
@@ -48,6 +49,7 @@ export default function LoginPage() {
       </section>
       <section className="flex items-center justify-center px-5 py-12 sm:px-10">
       <div className="w-full max-w-md rounded-xl border border-border bg-card p-7 shadow-pop sm:p-9">
+        <div className="mb-8 lg:hidden"><BrandLogo className="w-56 max-w-full" /></div>
         <div className="mb-6 flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple text-white">
             <LockKeyhole className="h-5 w-5" />

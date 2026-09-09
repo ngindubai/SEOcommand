@@ -1,3 +1,4 @@
+import { mergeDashboardData, type Ga4Dashboard } from "@/lib/dashboard-data";
 import type {
   AiPrompt,
   Backlink,
@@ -60,6 +61,7 @@ function envelope<T>(parts: DS<unknown>[], data: T): DS<T> {
   }
   return {
     data,
+    includedDomains: parts.length,
     capturedOn,
     provenance: provenance ?? ({ source: "dataforseo", mode: "live" } as Provenance),
   };
@@ -150,7 +152,9 @@ function mergeTimeseries(bundles: DomainLiveBundle[]): DS<GscTimeseriesPoint[]> 
       byDate.set(p.date, acc);
     }
   }
+  const datesPerProperty = parts.map((part) => new Set(part.data.map((point) => point.date)));
   const data = [...byDate.entries()]
+    .filter(([date]) => datesPerProperty.every((dates) => dates.has(date)))
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, a]) => ({
       date,
@@ -321,6 +325,9 @@ export function aggregateBundles(bundles: DomainLiveBundle[]): DomainLiveBundle 
 
   d.gsc_totals = mergeGscTotals(withData);
   d.ga4_overview = mergeGa4Overview(withData);
+  const dashboardParts = pickDs<Ga4Dashboard>(withData, "ga4_dashboard");
+  const dashboard = mergeDashboardData(dashboardParts.map((p) => p.data));
+  if (dashboard) d.ga4_dashboard = envelope(dashboardParts.filter((p) => p.data.endDate === dashboard.endDate && p.data.startDate === dashboard.startDate && p.data.breakdownStartDate === dashboard.breakdownStartDate), dashboard);
   d.position_buckets = mergePositionBuckets(withData);
   d.gsc_timeseries = mergeTimeseries(withData);
   d.visibility_series = mergeVisibility(withData);

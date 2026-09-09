@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ArrowRight, Building2 } from "lucide-react";
-import { PortfolioRail } from "./portfolio-rail";
+import { CommandRail } from "./command-rail";
 import { TopNav } from "./top-nav";
 import { ContextBar } from "./context-bar";
 import { MobileNav } from "./mobile-nav";
@@ -62,7 +62,7 @@ function SiteContextBoundary({ children }: { children: React.ReactNode }) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-workspace">
-      <PortfolioRail />
+      <CommandRail />
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="z-30 shrink-0">
           <div className="relative">
@@ -72,7 +72,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <ContextBar />
         </header>
         <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-          <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8"><SiteContextBoundary>{children}</SiteContextBoundary></div>
+          <div className="mx-auto max-w-[1800px] px-4 py-5 sm:px-5 lg:px-6"><SiteContextBoundary>{children}</SiteContextBoundary></div>
         </main>
       </div>
     </div>

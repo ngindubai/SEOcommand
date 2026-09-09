@@ -28,7 +28,7 @@ import {
   gscQueryPages,
   shareOfMarket,
 } from "@/providers/google/gsc";
-import { ga4Channels, ga4LandingPages, ga4OrganicOverview } from "@/providers/google/ga4";
+import { ga4Dashboard, ga4Channels, ga4LandingPages, ga4OrganicOverview } from "@/providers/google/ga4";
 import {
   dataForSeoConfigured,
   ensureOnPageCrawl,
@@ -419,6 +419,14 @@ export async function syncDomain(
         if (!googleOk || !domain.ga4PropertyId) return "skip";
         const p = prov("google-analytics", `GA4 ${domain.ga4PropertyId}`);
         await write("ga4_landing_pages", await ga4LandingPages(domainId, 28, 50), p);
+        return { payload: null, provenance: p };
+      }),
+    () =>
+      collect("ga4_dashboard", async () => {
+        if (!googleOk || !domain.ga4PropertyId) return "skip";
+        const dashboard = await ga4Dashboard(domainId);
+        const p = { ...prov("google-analytics", `GA4 ${domain.ga4PropertyId}`, 180), rangeStart: dashboard.startDate, rangeEnd: dashboard.endDate };
+        await write("ga4_dashboard", dashboard, p);
         return { payload: null, provenance: p };
       }),
     () =>

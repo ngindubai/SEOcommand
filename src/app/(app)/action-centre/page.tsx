@@ -1,49 +1,27 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useDomain } from "@/components/shell/domain-context";
+import { useActionQueue } from "@/lib/use-live";
+import { isUrgentAction, type ActionItem } from "@/lib/action-queue";
 import { AlertTriangle, ArrowRight, BellRing, CheckCircle2, CirclePause, ListChecks, Loader2, Sparkles, Zap } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button, Card, EmptyState, SeverityBadge, Skeleton, StatusBadge } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 
-interface ActionItem {
-  id: string;
-  kind: "alert" | "recommendation" | "research";
-  siteSlug: string | null;
-  siteName: string;
-  title: string;
-  detail: string | null;
-  status: string;
-  severity: "critical" | "high" | "medium" | "low";
-  score: number;
-  actionUrl: string | null;
-  duplicateWarning?: { severity?: string; summary?: string; matches?: unknown[] };
-  createdAt: string;
-}
-
-interface ActionData {
-  items: ActionItem[];
-  counts: { urgent: number; open: number; paused: number };
-  meta?: { returned: number; total: number; hasMore: boolean };
-}
-
 export default function ActionCentrePage() {
-  const [data, setData] = useState<ActionData | null>(null);
-  const [filter, setFilter] = useState<"all" | "urgent" | "alerts" | "recommendations" | "research">("all");
-  const [loading, setLoading] = useState(true);
+  const { scope } = useDomain();
+  const params = useSearchParams();
+  const { data, loading, error, refresh: load } = useActionQueue(scope);
+  const [filter, setFilter] = useState<"all" | "urgent" | "alerts" | "recommendations" | "research">(params.get("priority") === "urgent" ? "urgent" : "all");
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [executionItemId, setExecutionItemId] = useState<string | null>(null);
 
-  function load() {
-    setLoading(true);
-    fetch("/api/action-centre").then((response) => response.json()).then(setData).finally(() => setLoading(false));
-  }
-  useEffect(load, []);
-
   const items = useMemo(() => (data?.items ?? []).filter((item) => {
-    if (filter === "urgent") return item.score >= 75;
+    if (filter === "urgent") return isUrgentAction(item);
     if (filter === "alerts") return item.kind === "alert";
     if (filter === "recommendations") return item.kind === "recommendation";
     if (filter === "research") return item.kind === "research";
@@ -56,7 +34,7 @@ export default function ActionCentrePage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: item.id, action }),
     });
-    if (response.ok) setData((current) => current ? { ...current, items: current.items.filter((value) => value.id !== item.id) } : current);
+    if (response.ok) load();
   }
 
   async function reviewResearch(item: ActionItem, action: "approve" | "reject") {
@@ -66,7 +44,7 @@ export default function ActionCentrePage() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error ?? "The research decision could not be saved.");
       if (action === "approve" && body.executionItemId) setExecutionItemId(body.executionItemId);
-      setData((current) => current ? { ...current, items: current.items.filter((value) => value.id !== item.id) } : current);
+      load();
     } catch (reason) { setActionError(reason instanceof Error ? reason.message : "The research decision could not be saved."); }
     finally { setReviewingId(null); }
   }
@@ -74,6 +52,9 @@ export default function ActionCentrePage() {
   return (
     <div className="animate-in space-y-6">
       <PageHeader title="Action centre" description="One prioritised queue for portfolio risks, opportunities and approvals. Start here, then follow the evidence into the affected website." actions={<Button onClick={load}>Refresh signals</Button>} />
+
+      {error && <p role="alert" className="text-sm text-critical">The task queue couldn’t refresh. Please try again.</p>}
+      {data && !data.available && <p className="text-sm text-muted">Task data isn’t connected yet.</p>}
 
       <section className="grid gap-3 md:grid-cols-3">
         <SignalCard icon={<Zap className="h-5 w-5" />} label="Needs attention now" value={data?.counts.urgent ?? 0} note="Critical and high-priority signals" color="#FF6B5E" />

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, ChevronRight, ExternalLink, ScanLine, Settings2 } from "lucide-react";
 import { SITE_NAV, SCAN_CENTRE, TECHNICAL_SECONDARY, KEYWORD_SECONDARY, BACKLINK_SECONDARY, RESEARCH_NAV } from "@/lib/nav";
 import { useDomain, type RangeKey } from "./domain-context";
@@ -19,12 +19,30 @@ function isWebsiteWorkspace(pathname: string, siteQuery: string | null) {
 }
 
 export function ContextBar() {
-  const { activeDomain, groups, range, setRange } = useDomain();
+  const { activeDomain, activeGroup, scope, setScope, sites, groups, range, setRange } = useDomain();
+  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const siteQuery = searchParams.get("site");
   const websiteMode = isWebsiteWorkspace(pathname, siteQuery);
   const siteId = activeDomain?.id;
+  const subtitle = activeDomain?.host ?? (activeGroup ? "Group and nested subgroups" : "Portfolio-wide view");
+  if (pathname === "/portfolio") return <div className="border-b border-border bg-card"><div className="flex min-h-14 items-center gap-3 px-4 sm:px-6">
+        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: activeDomain?.accent ?? activeGroup?.color ?? "#d87832" }} />
+        <div className="min-w-0 flex-1">
+          <select aria-label="Website or portfolio scope" value={scope} onChange={(event) => { const next = event.target.value; setScope(next); router.push(next === "portfolio" || next.startsWith("group:") ? `/portfolio?scope=${encodeURIComponent(next)}` : `/portfolio?site=${encodeURIComponent(next)}`); }} className="max-w-full rounded border border-border bg-card px-2 py-1 text-xs font-medium text-ink">
+            <option value="portfolio">All websites</option>
+            {groups.length > 0 && <optgroup label="Groups">{groups.map((group) => <option key={group.id} value={`group:${group.id}`}>{group.name}</option>)}</optgroup>}
+            <optgroup label="Websites">{sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</optgroup>
+          </select>
+          <div className="truncate text-2xs text-muted">{subtitle}</div>
+        </div>
+        {activeDomain && <a href={`https://${activeDomain.host}`} target="_blank" rel="noreferrer" className="hidden items-center gap-1.5 rounded-md px-2.5 py-2 text-xs font-semibold text-muted hover:bg-workspace hover:text-ink sm:flex">Visit site <ExternalLink className="h-3.5 w-3.5" /></a>}
+        {siteId && <Link href={`/sites/${siteId}/settings`} className={cn("hidden items-center gap-1.5 rounded-md px-2.5 py-2 text-xs font-semibold sm:flex", pathname.includes("/settings") ? "bg-purple/10 text-purple" : "text-muted hover:bg-workspace hover:text-ink")}><Settings2 className="h-3.5 w-3.5" /> Settings</Link>}
+        <div className="flex items-center gap-0.5 rounded-md border border-border bg-workspace p-0.5">
+          {RANGES.map((item) => <button key={item.key} onClick={() => setRange(item.key)} aria-pressed={range === item.key} className={cn("rounded px-2 py-1.5 text-2xs font-medium", range === item.key ? "bg-card text-purple shadow-sm" : "text-muted hover:text-ink")}>{item.label}</button>)}
+        </div>
+  </div></div>;
 
   if (!websiteMode && (pathname === "/research" || pathname.startsWith("/domain-research") || pathname.startsWith("/keyword-research"))) {
     return (
@@ -84,7 +102,7 @@ export function ContextBar() {
           <a href={`https://${activeDomain.host}`} target="_blank" rel="noreferrer" className="hidden items-center gap-1.5 rounded-md px-2.5 py-2 text-xs font-semibold text-muted hover:bg-workspace hover:text-ink sm:flex">Visit site <ExternalLink className="h-3.5 w-3.5" /></a>
           <Link href={`/sites/${siteId}/settings`} className={cn("flex items-center gap-1.5 rounded-md px-2.5 py-2 text-xs font-semibold", pathname.includes("/settings") ? "bg-purple/10 text-purple" : "text-muted hover:bg-workspace hover:text-ink")}><Settings2 className="h-3.5 w-3.5" /> Settings</Link>
           <div className="hidden items-center gap-0.5 rounded-md border border-border bg-workspace p-0.5 lg:flex">
-            {RANGES.map((item) => <button key={item.key} onClick={() => setRange(item.key)} className={cn("rounded px-2.5 py-1.5 text-2xs font-semibold", range === item.key ? "bg-card text-ink shadow-sm" : "text-muted hover:text-ink")}>{item.label}</button>)}
+            {RANGES.map((item) => <button key={item.key} onClick={() => setRange(item.key)} aria-pressed={range === item.key} className={cn("rounded px-2.5 py-1.5 text-2xs font-semibold", range === item.key ? "bg-card text-ink shadow-sm" : "text-muted hover:text-ink")}>{item.label}</button>)}
           </div>
         </div>
       </div>

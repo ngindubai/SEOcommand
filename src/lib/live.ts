@@ -1,3 +1,4 @@
+import type { Ga4Dashboard } from "./dashboard-data";
 import type {
   AiPrompt,
   Backlink,
@@ -51,6 +52,7 @@ export const DATASETS = [
   "gsc_page_movers",
   "striking_distance",
   "share_of_market",
+  "ga4_dashboard",
   "ga4_overview",
   "ga4_landing_pages",
   "ga4_channels",
@@ -60,6 +62,7 @@ export const DATASETS = [
 export type DatasetKey = (typeof DATASETS)[number];
 
 export interface DS<T> {
+  includedDomains?: number;
   data: T;
   capturedOn: string;
   provenance: Provenance;
@@ -119,6 +122,7 @@ export interface DomainLiveBundle {
     gsc_page_movers?: DS<{ gains: GscMover[]; losses: GscMover[] }>;
     striking_distance?: DS<StrikingDistanceRow[]>;
     share_of_market?: DS<ShareOfMarket | null>;
+    ga4_dashboard?: DS<Ga4Dashboard>;
     ga4_overview?: DS<Ga4Overview>;
     ga4_landing_pages?: DS<Ga4LandingPage[]>;
     ga4_channels?: DS<Ga4ChannelRow[]>;

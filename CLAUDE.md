@@ -37,6 +37,17 @@ call Semrush or answer keyword metrics from general knowledge.
 - Do not make chargeable API calls or require live credentials during routine
   testing/CI.
 
+## Preserve existing data
+
+- Preserve existing websites, settings, credentials, saved metrics, history and
+  workflow records when making or releasing changes.
+- Keep the existing database and its connection configuration. Never reset,
+  reseed, truncate, drop or replace production data as part of a UI update.
+- Prefer additive, backward-compatible schema changes when they are required;
+  verify migrations against disposable data before applying them to a live store.
+- Merge the latest primary-branch changes before release so newer features and
+  persistence behavior are not overwritten by an older design checkout.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know
