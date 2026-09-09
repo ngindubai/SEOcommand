@@ -14,7 +14,7 @@ export default function HomePage() {
   return (
     <div className="animate-in space-y-5">
       <PageHeader title="SEO Command Centre" description="Start with independent research, portfolio intelligence or the next approved action." />
-      <Card className="relative overflow-hidden border-0 bg-ink p-6 text-white sm:p-8">
+      <Card className="relative overflow-hidden border-0 bg-[#272624] p-6 text-white sm:p-8">
         <div className="absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_center,rgba(51,92,255,0.24),transparent_68%)]" />
         <div className="relative max-w-3xl"><div className="text-2xs font-bold uppercase tracking-[0.16em] text-white/50">Research to execution</div><h1 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">Find the opportunity. Connect the evidence. Ship the work. Measure the result.</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-white/65">Global research stays independent until you explicitly map an opportunity to a website.</p></div>
       </Card>

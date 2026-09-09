@@ -13,7 +13,7 @@ import { resolveReportBranding, type ReportBranding } from "@/reports/branding";
 
 export default function ClientReportPage() {
   const searchParams = useSearchParams();
-  const { sites, setScope } = useDomain();
+  const { sites, setScope, range } = useDomain();
   const siteId = searchParams.get("site")?.trim() ?? "";
   const site = sites.find((item) => item.id === siteId);
   const template = REPORT_TEMPLATES.find((item) => item.id === searchParams.get("template")) ?? REPORT_TEMPLATES.find((item) => item.id === "tpl-domain")!;
@@ -21,6 +21,9 @@ export default function ClientReportPage() {
   const [branding, setBranding] = useState<ReportBranding | null>(site ? resolveReportBranding(site) : null);
   const [brandError, setBrandError] = useState<string | null>(null);
   const [outcomes, setOutcomes] = useState<ReportOutcome[]>([]);
+  const [outcomeLoading, setOutcomeLoading] = useState(true);
+  const [revision, setRevision] = useState(0);
+  const [outcomeError, setOutcomeError] = useState<string | null>(null);
 
   useEffect(() => { if (siteId) setScope(siteId); }, [setScope, siteId]);
   useEffect(() => {
@@ -37,7 +40,7 @@ export default function ClientReportPage() {
       .catch((error: Error) => { if (active) setBrandError(error.message); });
     return () => { active = false; };
   }, [site]);
-  useEffect(() => { if (!siteId) return; const controller = new AbortController(); fetch(`/api/outcomes?site=${encodeURIComponent(siteId)}`, { signal: controller.signal }).then((response) => response.ok ? response.json() : null).then((body) => setOutcomes(body?.rows ?? [])).catch(() => undefined); return () => controller.abort(); }, [siteId]);
+  useEffect(() => { if (!siteId) return; const controller = new AbortController(); setOutcomeLoading(true); setOutcomes([]); fetch(`/api/outcomes?site=${encodeURIComponent(siteId)}`, { signal: controller.signal }).then((response) => response.ok ? response.json() : Promise.reject(new Error("Delivery records could not load. Refresh before exporting."))).then((body) => { setOutcomes(body?.rows ?? []); setOutcomeError(null); }).catch((reason) => { if (reason.name !== "AbortError") setOutcomeError(reason.message); }).finally(() => { if (!controller.signal.aborted) setOutcomeLoading(false); }); return () => controller.abort(); }, [siteId, revision]);
 
   const title = useMemo(() => `${site?.name ?? "Website"} · ${template.name}`, [site, template.name]);
   useEffect(() => {
@@ -54,9 +57,11 @@ export default function ClientReportPage() {
   return <div className="report-studio space-y-5 pb-12">
     <div className="report-toolbar sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card/95 p-3 shadow-card backdrop-blur">
       <div className="flex min-w-0 items-center gap-3"><Link href={`/reports?site=${site.id}`} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border text-muted hover:text-ink" aria-label="Back to reports"><ArrowLeft className="h-4 w-4" /></Link><div className="min-w-0"><div className="truncate text-sm font-extrabold text-ink">{template.name}</div><div className="truncate text-2xs text-muted">{site.name} · client-ready preview</div></div></div>
-      <div className="flex items-center gap-2"><Button size="sm" onClick={live.refresh}><RefreshCw className="h-3.5 w-3.5" />Refresh data</Button><Link href={`/sites/${site.id}/settings?tab=reporting`} className="inline-flex h-7 items-center justify-center gap-1.5 rounded-md border border-border bg-card px-2.5 text-xs font-medium text-ink transition-colors hover:bg-workspace"><Palette className="h-3.5 w-3.5" />Branding</Link><Button variant="primary" size="sm" onClick={() => window.print()}><Download className="h-3.5 w-3.5" />Save PDF</Button></div>
+      <div className="flex items-center gap-2"><Button size="sm" onClick={() => { live.refresh(); setRevision((value) => value + 1); }}><RefreshCw className="h-3.5 w-3.5" />Refresh data</Button><Link href={`/sites/${site.id}/settings?tab=reporting`} className="inline-flex h-7 items-center justify-center gap-1.5 rounded-md border border-border bg-card px-2.5 text-xs font-medium text-ink transition-colors hover:bg-workspace"><Palette className="h-3.5 w-3.5" />Branding</Link><Button variant="primary" size="sm" disabled={outcomeLoading || live.loading || Boolean(outcomeError) || Boolean(live.error)} onClick={() => window.print()}><Download className="h-3.5 w-3.5" />Save PDF</Button></div>
     </div>
     {brandError && <div className="report-toolbar rounded-md border border-warning/25 bg-warning/10 px-4 py-3 text-xs text-[#9A6B08]">{brandError} The website’s default identity is being used.</div>}
-    <ClientReport site={site} template={template} branding={branding} bundle={live.data} outcomes={outcomes} />
+    {outcomeLoading && <p role="status" className="text-sm text-muted">Loading delivery records before export…</p>}
+    {outcomeError && <p role="alert" className="text-sm text-critical">{outcomeError}</p>}
+    <ClientReport site={site} template={template} branding={branding} bundle={live.data} outcomes={outcomes} days={parseInt(range)} />
   </div>;
 }

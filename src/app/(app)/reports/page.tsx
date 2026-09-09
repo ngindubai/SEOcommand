@@ -22,6 +22,8 @@ import { fullNumber, percent } from "@/lib/format";
 import { relativeFromNow } from "@/lib/dates";
 import type { ReportTemplate } from "@/lib/types";
 import { useDomain } from "@/components/shell/domain-context";
+import { csvCell } from "@/lib/csv";
+import { EvidenceMessage } from "@/components/ui/evidence-message";
 
 /* ---------------------------------------------------------------------- */
 /* Local types                                                            */
@@ -54,7 +56,7 @@ function SectionNoData({ reason }: { reason?: string }) {
   return (
     <p className="rounded-md border border-dashed border-border bg-workspace/50 px-3 py-2 text-xs text-muted">
       {reason ??
-        "No data yet — this section populates from per-domain live datasets once a sync has stored them."}
+        "No saved data for this section yet. Open a website report to review its available evidence."}
     </p>
   );
 }
@@ -174,7 +176,7 @@ function renderSection(template: ReportTemplate, section: string, pm: PortfolioL
         return <LeaderboardPreview pm={pm} />;
       case "Priority actions":
         return (
-          <SectionNoData reason="No data yet — priority actions come from per-domain derived recommendations, which are not aggregated into the portfolio read-model." />
+          <SectionNoData reason="Select a website and open its full report to see its priority actions." />
         );
     }
   }
@@ -242,7 +244,7 @@ const PAGE_DESCRIPTION =
 export default function ReportsPage() {
   const router = useRouter();
   const { data: pm, loading, error } = useLivePortfolio();
-  const { sites, groups, activeDomain } = useDomain();
+  const { sites, groups, activeDomain, scope } = useDomain();
   const [scopeType, setScopeType] = useState<"portfolio" | "group" | "site" | "campaign">(activeDomain ? "site" : "portfolio");
   const [scopeId, setScopeId] = useState(activeDomain?.id ?? "");
   const [campaignOptions, setCampaignOptions] = useState<{ id: string; name: string }[]>([]);
@@ -255,11 +257,14 @@ export default function ReportsPage() {
   const [schedules, setSchedules] = useState<PersistedSchedule[]>([]);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [scheduleLoading, setScheduleLoading] = useState(true);
+  const [scheduleNotice, setScheduleNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!activeDomain) return;
-    setScopeType("site"); setScopeId(activeDomain.id);
-  }, [activeDomain]);
+    setScopeType(scope === "portfolio" ? "portfolio" : scope.startsWith("group:") ? "group" : "site");
+    setScopeId(scope === "portfolio" ? "" : scope.replace(/^group:/, ""));
+  }, [scope]);
   useEffect(() => {
     if (!activeDomain) { setCampaignOptions([]); return; }
     fetch(`/api/rank-tracking?site=${encodeURIComponent(activeDomain.id)}`).then((response) => response.json()).then((body: { campaigns?: { id: string; name: string }[] }) => setCampaignOptions(body.campaigns ?? [])).catch(() => setCampaignOptions([]));
@@ -292,7 +297,8 @@ export default function ReportsPage() {
       })
       .catch((err) => {
         if (active) setScheduleError(err instanceof Error ? err.message : "Could not load report schedules.");
-      });
+      })
+      .finally(() => { if (active) setScheduleLoading(false); });
     return () => {
       active = false;
     };
@@ -312,12 +318,13 @@ export default function ReportsPage() {
       .split(",")
       .map((value) => value.trim())
       .filter(Boolean);
-    if (recipients.length === 0) {
-      setScheduleError("Add at least one recipient email address.");
+    if (scopeType !== "portfolio" && !scopeId) { setScheduleError("Choose a website, folder or campaign for this report."); return; }
+    if (recipients.length === 0 || recipients.some((recipient) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient))) {
+      setScheduleError("Enter valid recipient email addresses, separated by commas.");
       return;
     }
     setSaving(true);
-    setScheduleError(null);
+    setScheduleError(null); setScheduleNotice(null);
     try {
       const response = await fetch("/api/reports/schedules", {
         method: "POST",
@@ -328,6 +335,7 @@ export default function ReportsPage() {
       if (!response.ok || !body.schedule) throw new Error(body.error || "Could not save the schedule.");
       setSchedules((prev) => [body.schedule!, ...prev]);
       setDraftRecipients("");
+      setScheduleNotice("Delivery schedule saved.");
     } catch (err) {
       setScheduleError(err instanceof Error ? err.message : "Could not save the schedule.");
     } finally {
@@ -336,15 +344,16 @@ export default function ReportsPage() {
   }
 
   async function deleteSchedule(id: string) {
-    setScheduleError(null);
+    setScheduleError(null); setScheduleNotice(null); setDeleting(id);
     try {
       const response = await fetch(`/api/reports/schedules?id=${encodeURIComponent(id)}`, { method: "DELETE" });
       const body = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(body.error || "Could not delete the schedule.");
       setSchedules((prev) => prev.filter((schedule) => schedule.id !== id));
+      setScheduleNotice("Delivery schedule removed.");
     } catch (err) {
       setScheduleError(err instanceof Error ? err.message : "Could not delete the schedule.");
-    }
+    } finally { setDeleting(null); }
   }
 
   function downloadCsv() {
@@ -354,7 +363,7 @@ export default function ReportsPage() {
       return [domain?.name ?? row.domainId, row.clicks28d, row.impressions28d, row.sessions28d, row.conversions28d, row.health, row.visibility];
     }) ?? [];
     const csv = [header, ...rows]
-      .map((row) => row.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
+      .map((row) => row.map(csvCell).join(","))
       .join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a");
@@ -426,7 +435,7 @@ export default function ReportsPage() {
         <PageHeader title={PAGE_TITLE} description={PAGE_DESCRIPTION} lastSync={null} />
         <EmptyState
           title="No portfolio data available"
-          description="The live portfolio read-model returned nothing. Run a sync to populate it."
+          description="No saved performance data is available yet. Connect a website and collect its first results."
         />
       </div>
     );
@@ -435,6 +444,7 @@ export default function ReportsPage() {
   const reportData = scopedPm ?? pm;
   const scopeLabel = scopeType === "portfolio" ? "Portfolio" : scopeType === "group" ? groups.find((group) => group.id === scopeId)?.name ?? "Folder" : scopeType === "site" ? sites.find((site) => site.id === scopeId)?.name ?? "Website" : campaignOptions.find((campaign) => campaign.id === scopeId)?.name ?? "Campaign";
   const reportSite = scopeType === "site" ? sites.find((site) => site.id === scopeId) : null;
+  const scopedSchedules = schedules.filter((schedule) => scopeType === "portfolio" || (schedule.scopeType === scopeType && schedule.scopeId === scopeId));
 
   return (
     <div className="animate-in space-y-5">
@@ -443,14 +453,14 @@ export default function ReportsPage() {
         description={`${PAGE_DESCRIPTION} Current reporting scope: ${scopeLabel}.`}
         lastSync={lastSync}
         loading={loading}
-        actions={<div className="flex items-center gap-2"><select value={scopeType} onChange={(event) => { const next = event.target.value as typeof scopeType; setScopeType(next); setScopeId(next === "site" ? activeDomain?.id ?? "" : ""); }} className="h-9 rounded-md border border-border bg-card px-3 text-xs font-bold text-ink"><option value="portfolio">Portfolio</option><option value="group">Folder</option><option value="site">Website</option><option value="campaign" disabled={!activeDomain}>Campaign</option></select>{scopeType !== "portfolio" && <select value={scopeId} onChange={(event) => setScopeId(event.target.value)} className="h-9 max-w-56 rounded-md border border-border bg-card px-3 text-xs font-bold text-ink"><option value="">Choose {scopeType === "group" ? "a folder" : scopeType === "site" ? "a website" : "a campaign"}</option>{(scopeType === "group" ? groups : scopeType === "site" ? sites : campaignOptions).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}</div>}
+        actions={<details className="relative"><summary className="cursor-pointer rounded-md border border-border px-3 py-2 text-xs font-semibold">Report options</summary><div className="mt-2 flex flex-wrap items-center gap-2"><select aria-label="Report coverage" value={scopeType} onChange={(event) => { const next = event.target.value as typeof scopeType; setScopeType(next); setScopeId(next === "site" ? activeDomain?.id ?? "" : ""); }} className="h-9 rounded-md border border-border bg-card px-3 text-xs font-bold text-ink"><option value="portfolio">Portfolio</option><option value="group">Folder</option><option value="site">Website</option><option value="campaign" disabled={!activeDomain}>Campaign</option></select>{scopeType !== "portfolio" && <select aria-label="Report website, folder or campaign" value={scopeId} onChange={(event) => setScopeId(event.target.value)} className="h-9 max-w-56 rounded-md border border-border bg-card px-3 text-xs font-bold text-ink"><option value="">Choose {scopeType === "group" ? "a folder" : scopeType === "site" ? "a website" : "a campaign"}</option>{(scopeType === "group" ? groups : scopeType === "site" ? sites : campaignOptions).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}</div></details>}
       />
 
       <Card className="relative overflow-hidden border-0 bg-[#11182B] text-white">
         <div className="absolute inset-y-0 left-0 w-1.5" style={{ background: `linear-gradient(180deg, ${reportSite?.accent ?? "#335CFF"}, #12B8C4)` }} />
         <div className="grid gap-7 p-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center lg:p-8">
-          <div><div className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-white/45">Client reporting studio</div><h2 className="mt-3 max-w-2xl font-serif text-3xl font-bold leading-tight tracking-tight">Turn live SEO evidence into a report a client can understand and act on.</h2><p className="mt-3 max-w-2xl text-xs leading-5 text-white/60">Every website can carry its own logo, colours, prepared-by identity and footer. Reports combine narrative, period comparisons, trend charts, ranking movement, crawl risk, links, AI visibility and next actions.</p><div className="mt-5 flex flex-wrap gap-2">{reportSite ? <><Button variant="primary" onClick={() => router.push(`/reports/client?site=${reportSite.id}&template=tpl-domain`)}>Open full client report <ArrowRight className="h-4 w-4" /></Button><Button onClick={() => router.push(`/sites/${reportSite.id}/settings?tab=reporting`)}><Palette className="h-4 w-4" />Customise branding</Button></> : <div className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70">Choose <span className="font-bold text-white">Website</span> above to create a white-label client report.</div>}</div></div>
-          <div className="relative hidden min-h-44 overflow-hidden rounded-md bg-[#F7F8FB] p-5 text-[#11182B] shadow-2xl lg:block"><div className="h-1 w-16" style={{ background: reportSite?.accent ?? "#335CFF" }} /><div className="mt-8 text-[9px] font-extrabold uppercase tracking-[0.18em] text-[#7B8498]">Monthly performance</div><div className="mt-2 font-serif text-2xl font-bold">{reportSite?.name ?? "Client website"}</div><div className="mt-7 grid grid-cols-3 gap-2">{["Search", "Technical", "Actions"].map((label, index) => <div key={label} className="border-t-2 bg-white p-2 text-[9px] font-bold" style={{ borderColor: index === 1 ? "#12B8C4" : reportSite?.accent ?? "#335CFF" }}>{label}<div className="mt-2 h-1.5 rounded bg-[#E6E9F0]" /></div>)}</div></div>
+          <div><div className="text-[12px] font-extrabold uppercase tracking-[0.2em] text-white/45">Client reporting studio</div><h2 className="mt-3 max-w-2xl font-serif text-3xl font-bold leading-tight tracking-tight">Turn live SEO evidence into a report a client can understand and act on.</h2><p className="mt-3 max-w-2xl text-xs leading-5 text-white/60">Every website can carry its own logo, colours, prepared-by identity and footer. Reports combine narrative, period comparisons, trend charts, ranking movement, crawl risk, links, AI visibility and next actions.</p><div className="mt-5 flex flex-wrap gap-2">{reportSite ? <><Button variant="primary" onClick={() => router.push(`/reports/client?site=${reportSite.id}&template=tpl-domain`)}>Open full client report <ArrowRight className="h-4 w-4" /></Button><Button onClick={() => router.push(`/sites/${reportSite.id}/settings?tab=reporting`)}><Palette className="h-4 w-4" />Customise branding</Button></> : <div className="rounded-md border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/70">Select a website in the top bar to create a white-label client report.</div>}</div></div>
+          <div className="relative hidden min-h-44 overflow-hidden rounded-md bg-[#F7F8FB] p-5 text-[#11182B] shadow-2xl lg:block"><div className="h-1 w-16" style={{ background: reportSite?.accent ?? "#335CFF" }} /><div className="mt-8 text-[12px] font-extrabold uppercase tracking-[0.18em] text-[#7B8498]">Monthly performance</div><div className="mt-2 font-serif text-2xl font-bold">{reportSite?.name ?? "Client website"}</div><div className="mt-7 grid grid-cols-3 gap-2">{["Search", "Technical", "Actions"].map((label, index) => <div key={label} className="border-t-2 bg-white p-2 text-[12px] font-bold" style={{ borderColor: index === 1 ? "#12B8C4" : reportSite?.accent ?? "#335CFF" }}>{label}<div className="mt-2 h-1.5 rounded bg-[#E6E9F0]" /></div>)}</div></div>
         </div>
       </Card>
 
@@ -468,13 +478,13 @@ export default function ReportsPage() {
         />
         <KpiCard
           label="Scheduled reports"
-          value={String(schedules.filter((schedule) => schedule.enabled).length)}
-          hint="Persisted delivery schedules"
+          value={scheduleLoading || scheduleError ? "—" : String(scopedSchedules.filter((schedule) => schedule.enabled).length)}
+          hint="Saved schedules in this report’s scope"
         />
         <KpiCard
           label="Last data refresh"
           value={lastSync ? relativeFromNow(lastSync) : "never"}
-          hint="Latest provider sync across the portfolio"
+          hint="Latest saved snapshot in this report’s scope"
         />
       </div>
 
@@ -500,7 +510,7 @@ export default function ReportsPage() {
                 {t.sections.map((s) => (
                   <span
                     key={s}
-                    className="rounded border border-border bg-workspace px-1.5 py-0.5 text-[10px] text-muted"
+                    className="rounded border border-border bg-workspace px-1.5 py-0.5 text-[12px] text-muted"
                   >
                     {s}
                   </span>
@@ -526,15 +536,15 @@ export default function ReportsPage() {
       <Card className="p-4">
         <CardHeader
           title="Scheduled delivery"
-          subtitle="Schedules persist in Postgres and are handed to your configured delivery webhook"
+          subtitle="Automatically deliver reports after the daily data refresh"
         />
         <div className="space-y-4 pt-4">
           <div className="flex items-start gap-2.5 rounded-md border border-border bg-workspace/40 p-3">
             <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-purple" />
             <p className="text-xs text-muted">
-              Reports draw from snapshots refreshed at 06:00 UTC. Due schedules are processed after
-              the sync and sent to the configured signed webhook for email delivery. Without a
-              webhook, schedules remain saved and visible but are not sent.
+              Reports use saved data from the daily refresh at 06:00 UTC. Email delivery must be configured
+              by your administrator before scheduled reports can be sent. Your schedules remain saved
+              while delivery is being set up.
             </p>
           </div>
 
@@ -591,19 +601,16 @@ export default function ReportsPage() {
             </Button>
           </div>
 
-          {scheduleError && (
-            <p role="alert" className="rounded-md border border-critical/20 bg-critical/10 px-3 py-2 text-xs text-critical">
-              {scheduleError}
-            </p>
-          )}
+          {scheduleError && <div role="alert"><EvidenceMessage detail={scheduleError} /></div>}
+          {scheduleNotice && <p role="status" className="text-sm text-success">{scheduleNotice}</p>}
 
-          {schedules.length === 0 ? (
+          {scheduleLoading ? <p role="status" className="text-sm text-muted">Loading delivery schedules…</p> : scheduleError && schedules.length === 0 ? null : scopedSchedules.length === 0 ? (
             <p className="text-2xs text-muted">
-              No delivery schedules saved yet.
+              No delivery schedules saved for this scope yet.
             </p>
           ) : (
             <div className="space-y-2">
-              {schedules.map((schedule) => (
+              {scopedSchedules.map((schedule) => (
                 <div
                   key={schedule.id}
                   className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border px-3 py-2"
@@ -622,7 +629,7 @@ export default function ReportsPage() {
                       label={schedule.lastError ? "delivery error" : schedule.lastDelivered ? "delivered" : "scheduled"}
                       tone={schedule.lastError ? "critical" : schedule.lastDelivered ? "success" : "neutral"}
                     />
-                    <Button variant="ghost" size="sm" onClick={() => deleteSchedule(schedule.id)} aria-label={`Delete ${schedule.templateName}`}>
+                    <Button variant="ghost" size="sm" disabled={deleting !== null} onClick={() => deleteSchedule(schedule.id)} aria-label={`Delete ${schedule.templateName}`}>
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -672,9 +679,8 @@ export default function ReportsPage() {
               </div>
             ))}
             <p className="text-2xs text-muted">
-              Preview numbers come from the live portfolio read-model — nothing is estimated.
-              Per-domain sections render in full when reports are generated against a domain
-              bundle.
+              This preview uses saved snapshots for the report’s scope. Open a website’s full client
+              report for dated performance comparisons and detailed recommendations.
             </p>
           </div>
         )}

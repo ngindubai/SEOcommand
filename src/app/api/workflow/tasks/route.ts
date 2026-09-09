@@ -3,6 +3,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { hasDatabase, readLatestSnapshots } from "@/sync/store";
+import { QA_SITES } from "@/data/qa-fixtures";
 import { isManagedSite } from "@/platform/site-store";
 import { accessibleSiteSlugs, canAccessSite, hasPermission } from "@/platform/access";
 import { sessionFromRequest } from "@/lib/auth";
@@ -72,29 +73,16 @@ export async function GET(request: Request) {
   if (domainId && !await isManagedSite(domainId)) return NextResponse.json({ error: "Unknown domain." }, { status: 404 });
   if (domainId && !await canAccessSite(request, domainId)) return NextResponse.json({ error: "Website access required." }, { status: 403 });
   if (process.env.QA_SYNTHETIC === "true") {
-    return NextResponse.json({
-      items: [
-        {
-          id: "60000000-0000-4000-8000-000000000001",
-          domainSlug: domainId || "qa-site-1",
-          recommendationKey: `${domainId || "qa-site-1"}-rec-1`,
-          decision: "approved",
-          title: "Resolve high-impact indexability change",
-          module: "Technical",
-          effort: "S",
-          priorityScore: 86,
-          status: "in_progress",
-          executionType: "content_brief",
-          ownerEmail: session.email,
-          dueDate: "2026-09-10",
-          pageMode: "new_page",
-          plannedUrl: "/guides/high-impact-indexability",
-          createdBy: "qa@orwell.local",
-          updatedAt: "2026-08-26T08:00:00.000Z",
-        },
-      ],
-      synthetic: true,
-    });
+    const allowed = await accessibleSiteSlugs(request);
+    const sites = QA_SITES.filter((site) => (!domainId || site.id === domainId) && (allowed === null || allowed.includes(site.id)));
+    return NextResponse.json({ items: sites.map((site, index) => ({
+      id: `60000000-0000-4000-8000-${String(QA_SITES.indexOf(site) + 1).padStart(12, "0")}`,
+      domainSlug: site.id, recommendationKey: `${site.id}-rec-1`, decision: "approved",
+      title: "Resolve high-impact indexability change", module: "Technical", effort: "S", priorityScore: 86,
+      status: ["in_progress", "shipped", "verifying", "approved", "done"][index % 5], executionType: "content_brief", ownerEmail: session.email,
+      dueDate: "2026-09-10", pageMode: "new_page", plannedUrl: "/guides/high-impact-indexability", targetUrl: null,
+      sourceEvidence: { sourceValue: site.host }, executionData: {}, verification: {}, createdBy: "qa@orwell.local", updatedAt: "2026-08-26T08:00:00.000Z",
+    })), synthetic: true });
   }
   if (!hasDatabase()) return unavailable();
   const granted = domainId ? [domainId] : await accessibleSiteSlugs(request);

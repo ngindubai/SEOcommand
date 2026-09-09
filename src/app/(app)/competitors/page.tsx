@@ -7,6 +7,9 @@ import { PageHeader } from "@/components/ui/page-header";
 import { KpiCard } from "@/components/ui/kpi-card";
 import { Button, Card, CardHeader, EmptyState, StatusBadge } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/data-table";
+import { DOMAIN_RESEARCH_ESTIMATE_USD } from "@/lib/research";
+import { normalizedHost } from "@/lib/recommendation-quality";
+import { EvidenceMessage } from "@/components/ui/evidence-message";
 import { fullNumber } from "@/lib/format";
 
 interface ExplorerResult {
@@ -26,18 +29,22 @@ export default function CompetitorsPage() {
   const [recent, setRecent] = useState<RecentRun[]>([]);
   const [tab, setTab] = useState<"keywords" | "pages">("keywords");
   const [busy, setBusy] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyRevision, setHistoryRevision] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     setResult(null);
     setRecent([]);
-    fetch(`/api/competitor-explorer?site=${encodeURIComponent(domain.id)}`).then((response) => response.json()).then((body) => { if (active) setRecent(body.runs ?? []); }).catch(() => undefined);
+    setHistoryLoading(true); setError(null);
+    fetch(`/api/competitor-explorer?site=${encodeURIComponent(domain.id)}`).then(async (response) => { if (!response.ok) throw new Error("Saved explorations could not load. Retry to restore the list."); return response.json(); }).then((body) => { if (active) setRecent(body.runs ?? []); }).catch((reason) => { if (active) setError(reason.message); }).finally(() => { if (active) setHistoryLoading(false); });
     return () => { active = false; };
-  }, [domain.id]);
+  }, [domain.id, historyRevision]);
 
   const explore = async () => {
-    if (!target.trim()) return;
+    if (busy || !target.trim()) return;
+    if (normalizedHost(target) === normalizedHost(domain.host)) return setError("This is your selected website. Enter a different competitor domain.");
     setBusy(true); setError(null);
     try {
       const response = await fetch("/api/competitor-explorer", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ siteSlug: domain.id, targetHost: target }) });
@@ -49,6 +56,7 @@ export default function CompetitorsPage() {
     finally { setBusy(false); }
   };
 
+  const uniqueRecent = recent.filter((item, index, rows) => normalizedHost(item.targetHost) !== normalizedHost(domain.host) && rows.findIndex((other) => normalizedHost(other.targetHost) === normalizedHost(item.targetHost)) === index);
   const keywordColumns = useMemo<Column<ExplorerResult["keywords"][number]>[]>(() => [
     { key: "keyword", header: "Keyword", sortValue: (row) => row.keyword, render: (row) => <span className="font-medium text-ink">{row.keyword}</span> },
     { key: "intent", header: "Intent", render: (row) => <StatusBadge label={row.intent ?? "unknown"} tone="neutral" /> },
@@ -68,8 +76,8 @@ export default function CompetitorsPage() {
     <PageHeader title="Competitor explorer" description={`Reverse-engineer any competitor against ${domain.name}'s approved market and budget.`} />
     <Card className="overflow-hidden">
       <div className="grid lg:grid-cols-[1fr_auto]">
-        <div className="p-5"><div className="text-2xs font-medium uppercase tracking-wide text-muted">Competitor domain</div><div className="mt-2 flex gap-2"><div className="relative flex-1"><Search className="absolute left-3 top-2.5 h-4 w-4 text-muted" /><input aria-label="Competitor domain" value={target} onChange={(event) => setTarget(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void explore()} placeholder="competitor.com" className="h-9 w-full rounded-md border border-border bg-card pl-9 pr-3 text-sm outline-none focus:border-purple" /></div><Button variant="primary" onClick={explore} disabled={busy || !target.trim()}>{busy ? "Scanning…" : "Explore"}<ArrowRight className="h-4 w-4" /></Button></div>{error && <p role="alert" className="mt-2 text-xs text-critical">{error}</p>}<p className="mt-2 text-2xs text-muted">Runs four cost-guarded DataForSEO datasets and stores the evidence for reuse.</p></div>
-        <div className="border-t border-border bg-workspace/50 p-5 lg:w-72 lg:border-l lg:border-t-0"><div className="flex items-center gap-2 text-xs font-semibold text-ink"><Swords className="h-4 w-4 text-purple" />Recent explorations</div><div className="mt-2 space-y-1">{recent.slice(0, 4).map((item) => <button key={item.id} onClick={() => { setTarget(item.targetHost); setResult(item); }} className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs text-muted hover:bg-card hover:text-ink"><span className="truncate">{item.targetHost}</span><ArrowRight className="h-3 w-3" /></button>)}{!recent.length && <div className="text-2xs text-muted">No competitor has been explored yet.</div>}</div></div>
+        <div className="p-5"><div className="text-2xs font-medium uppercase tracking-wide text-muted">Competitor domain</div><div className="mt-2 flex gap-2"><div className="relative flex-1"><Search className="absolute left-3 top-2.5 h-4 w-4 text-muted" /><input aria-label="Competitor domain" value={target} onChange={(event) => setTarget(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void explore()} placeholder="competitor.com" className="h-9 w-full rounded-md border border-border bg-card pl-9 pr-3 text-sm outline-none focus:border-purple" /></div><Button variant="primary" onClick={explore} disabled={busy || !target.trim()}>{busy ? "Scanning…" : "Explore"}<ArrowRight className="h-4 w-4" /></Button></div>{error && <div role="alert" className="mt-2"><EvidenceMessage detail={error} /><Button size="sm" onClick={() => setHistoryRevision((value) => value + 1)}>Retry saved history</Button></div>}<p className="mt-2 text-2xs text-muted">Estimated new scan cost ≤ ${DOMAIN_RESEARCH_ESTIMATE_USD.toFixed(2)}. Four DataForSEO datasets; reopening saved results is free. A new scan, including a retry, can incur provider costs.</p></div>
+        <div className="border-t border-border bg-workspace/50 p-5 lg:w-72 lg:border-l lg:border-t-0"><div className="flex items-center gap-2 text-xs font-semibold text-ink"><Swords className="h-4 w-4 text-purple" />Recent explorations</div><div className="mt-2 space-y-1">{uniqueRecent.slice(0, 4).map((item) => <button key={item.id} onClick={() => { setTarget(item.targetHost); setResult(item); }} className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-xs text-muted hover:bg-card hover:text-ink"><span className="truncate">{item.targetHost}</span><ArrowRight className="h-3 w-3" /></button>)}{!historyLoading && !error && !uniqueRecent.length && <div className="text-2xs text-muted">No competitor has been explored yet.</div>}</div></div>
       </div>
     </Card>
     {result ? <>
@@ -80,7 +88,7 @@ export default function CompetitorsPage() {
         <KpiCard label="Referring domains" value={result.backlinks.referringDomains == null ? "—" : fullNumber(result.backlinks.referringDomains)} />
         <KpiCard label="Domain rank" value={result.backlinks.rank == null ? "—" : String(result.backlinks.rank)} />
       </div>
-      <Card><CardHeader title={result.targetHost} subtitle="Current organic footprint, strongest pages and link authority" action={<Building2 className="h-4 w-4 text-purple" />} /><div className="flex gap-1 border-b border-border px-4 py-2">{(["keywords", "pages"] as const).map((item) => <button key={item} onClick={() => setTab(item)} className={`rounded-md px-3 py-1.5 text-xs font-medium ${tab === item ? "bg-purple text-white" : "text-muted hover:bg-workspace"}`}>{item === "keywords" ? `Ranking keywords (${result.keywords.length})` : `Top pages (${result.pages.length})`}</button>)}</div>{tab === "keywords" ? <DataTable<ExplorerResult["keywords"][number]> rows={result.keywords} columns={keywordColumns} searchPlaceholder="Search competitor keywords…" rowKey={(row) => `${row.keyword}:${row.url}`} /> : <DataTable<ExplorerResult["pages"][number]> rows={result.pages} columns={pageColumns} searchPlaceholder="Search pages…" rowKey={(row) => row.url} />}</Card>
+      <Card><CardHeader title={result.targetHost} subtitle={`Collected ${new Date(result.capturedAt).toLocaleString()} · saved keyword, page and link evidence`} action={<Building2 className="h-4 w-4 text-purple" />} /><div className="flex gap-1 border-b border-border px-4 py-2">{(["keywords", "pages"] as const).map((item) => <button key={item} onClick={() => setTab(item)} className={`rounded-md px-3 py-1.5 text-xs font-medium ${tab === item ? "bg-purple text-white" : "text-muted hover:bg-workspace"}`}>{item === "keywords" ? `Ranking keywords (${result.keywords.length})` : `Top pages (${result.pages.length})`}</button>)}</div>{tab === "keywords" ? <DataTable<ExplorerResult["keywords"][number]> rows={result.keywords} columns={keywordColumns} searchPlaceholder="Search competitor keywords…" rowKey={(row) => `${row.keyword}:${row.url}`} /> : <DataTable<ExplorerResult["pages"][number]> rows={result.pages} columns={pageColumns} searchPlaceholder="Search pages…" rowKey={(row) => row.url} />}</Card>
     </> : <EmptyState icon={<Swords className="h-6 w-6" />} title="Choose a competitor to inspect" description="SEOcommand will capture its keyword footprint, strongest pages, paid visibility and backlink authority." />}
   </div>;
 }

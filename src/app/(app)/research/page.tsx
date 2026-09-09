@@ -89,7 +89,7 @@ function SerpChips({ features }: { features: SerpFeature[] }) {
       {features.map((f) => (
         <span
           key={f}
-          className="inline-flex items-center rounded border border-border bg-workspace px-1.5 py-0.5 text-[10px] font-medium text-muted"
+          className="inline-flex items-center rounded border border-border bg-workspace px-1.5 py-0.5 text-[12px] font-medium text-muted"
         >
           {SERP_LABEL[f]}
         </span>
@@ -119,11 +119,11 @@ function GlobalResearchHome() {
     <div className="animate-in space-y-5">
       <PageHeader title="Research" description="Explore markets, domains and topics independently. Nothing is connected to a website until you explicitly map it." />
       <Card className="overflow-hidden border-0 bg-ink text-white">
-        <div className="grid gap-6 p-6 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-center lg:p-8"><div><div className="text-2xs font-bold uppercase tracking-[0.16em] text-white/45">Global workspace</div><h1 className="mt-3 max-w-3xl text-3xl font-black tracking-tight">Research first. Decide where it belongs later.</h1><p className="mt-3 max-w-2xl text-sm leading-6 text-white/65">Save reusable evidence, qualify an opportunity and then map it to one or more websites through an explicit, auditable hand-off.</p><Link href="/keyword-research" className="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-[#6B5BFF] px-4 text-sm font-bold text-white hover:bg-[#7B6DFF]">Start keyword research <ArrowRight className="h-4 w-4" /></Link></div><div className="rounded-lg border border-white/10 bg-white/[0.06] p-4"><div className="text-2xs font-bold uppercase tracking-wide text-white/45">Workflow</div><div className="mt-3 space-y-2">{["Research and save evidence", "Qualify and value the opportunity", "Map it to a website or page", "Approve, execute and verify"].map((label, index) => <div key={label} className="flex items-center gap-3 rounded-md bg-white/[0.05] px-3 py-2.5"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-[10px] font-black text-[#7FE4EA]">{index + 1}</span><span className="text-xs font-semibold text-white/80">{label}</span></div>)}</div></div></div>
+        <div className="grid gap-6 p-6 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-center lg:p-8"><div><div className="text-2xs font-bold uppercase tracking-[0.16em] text-white/45">Global workspace</div><h2 className="mt-3 max-w-3xl text-3xl font-black tracking-tight">Research first. Decide where it belongs later.</h2><p className="mt-3 max-w-2xl text-sm leading-6 text-white/65">Save reusable evidence, qualify an opportunity and then map it to one or more websites through an explicit, auditable hand-off.</p><Link href="/keyword-research" className="mt-5 inline-flex h-10 items-center gap-2 rounded-md bg-[#6B5BFF] px-4 text-sm font-bold text-white hover:bg-[#7B6DFF]">Start keyword research <ArrowRight className="h-4 w-4" /></Link></div><div className="rounded-lg border border-white/10 bg-white/[0.06] p-4"><div className="text-2xs font-bold uppercase tracking-wide text-white/45">Workflow</div><div className="mt-3 space-y-2">{["Research and save evidence", "Qualify and value the opportunity", "Map it to a website or page", "Approve, execute and verify"].map((label, index) => <div key={label} className="flex items-center gap-3 rounded-md bg-white/[0.05] px-3 py-2.5"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-[12px] font-black text-[#7FE4EA]">{index + 1}</span><span className="text-xs font-semibold text-white/80">{label}</span></div>)}</div></div></div>
       </Card>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {RESEARCH_AREAS.map(({ title, description, icon: Icon, color, available, ...item }) => {
-          const content = <><span className="absolute inset-x-0 top-0 h-1" style={{ background: color }} /><div className="flex items-start justify-between gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-lg" style={{ color, background: `${color}14` }}><Icon className="h-5 w-5" /></span><span className={`rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${available ? "border-success/20 bg-success/10 text-success" : "border-border bg-workspace text-muted"}`}>{available ? "Available" : "Next stage"}</span></div><h2 className="mt-4 text-base font-extrabold text-ink">{title}</h2><p className="mt-1 min-h-10 text-xs leading-5 text-muted">{description}</p>{available && <div className="mt-4 flex items-center gap-1 text-xs font-bold text-purple">Open research <ArrowRight className="h-3.5 w-3.5" /></div>}</>;
+        {RESEARCH_AREAS.filter((area) => area.available).map(({ title, description, icon: Icon, color, available, ...item }) => {
+          const content = <><span className="absolute inset-x-0 top-0 h-1" style={{ background: color }} /><div className="flex items-start justify-between gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-lg" style={{ color, background: `${color}14` }}><Icon className="h-5 w-5" /></span><span className={`rounded-full border px-2 py-1 text-[12px] font-bold uppercase tracking-wide ${available ? "border-success/20 bg-success/10 text-success" : "border-border bg-workspace text-muted"}`}>{available ? "Available" : "Next stage"}</span></div><h2 className="mt-4 text-base font-extrabold text-ink">{title}</h2><p className="mt-1 min-h-10 text-xs leading-5 text-muted">{description}</p>{available && <div className="mt-4 flex items-center gap-1 text-xs font-bold text-purple">Open research <ArrowRight className="h-3.5 w-3.5" /></div>}</>;
           return available && "href" in item ? <Link key={title} href={item.href} className="group relative overflow-hidden rounded-lg border border-border bg-card p-5 shadow-card transition-all hover:-translate-y-0.5 hover:shadow-pop">{content}</Link> : <div key={title} className="relative overflow-hidden rounded-lg border border-border bg-card p-5 shadow-card">{content}</div>;
         })}
       </div>
@@ -160,7 +160,7 @@ function SearchPerformancePage() {
     const avgDifficulty = total
       ? Math.round(keywords.reduce((s, k) => s + k.difficulty, 0) / total)
       : 0;
-    const top10 = keywords.filter((k) => k.position != null && k.position <= 10).length;
+    const top10 = keywords.filter((k) => k.position != null && k.position > 0 && k.position <= 10).length;
     return { total, totalVolume, avgDifficulty, top10 };
   }, [keywords]);
 
@@ -399,7 +399,7 @@ function SearchPerformancePage() {
   return (
     <div className="animate-in space-y-5">
       <PageHeader
-        title="Research Centre"
+        title="Search performance"
         description={`Live keyword universe for ${scopeHost} — ranked terms, first-party search queries, organic rivals and page-one opportunities.`}
         lastSync={bundle?.lastSync ?? null}
         loading={loading}
@@ -424,7 +424,7 @@ function SearchPerformancePage() {
           {/* KPI row — real values only; "—" until the keyword dataset syncs. */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <KpiCard
-              label="Tracked keywords"
+              label="Discovered ranking keywords"
               value={kpis ? fullNumber(kpis.total) : "—"}
               hint={scopeHost}
             />
@@ -568,7 +568,7 @@ function SearchPerformancePage() {
                   <div>
                     <h3 className="text-sm font-semibold text-ink">Search queries</h3>
                     <p className="mt-0.5 text-2xs text-muted">
-                      Real first-party queries from Google Search Console — last 28 days.
+                      Saved Search Console queries · {queriesDs?.provenance.rangeStart ?? "Start unavailable"} to {queriesDs?.provenance.rangeEnd ?? queriesDs?.capturedOn ?? "end unavailable"}.
                     </p>
                   </div>
                   <SourceBadge

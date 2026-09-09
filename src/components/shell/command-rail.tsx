@@ -4,8 +4,8 @@ import { BrandLogo } from "@/components/brand/brand-logo";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Building2, FolderTree, ListChecks, LayoutDashboard, PanelLeftClose, PanelLeftOpen, Settings, X } from "lucide-react";
-import { GLOBAL_NAV, RESEARCH_NAV, SITE_NAV, SCAN_CENTRE, TECHNICAL_SECONDARY, KEYWORD_SECONDARY, BACKLINK_SECONDARY, navigationHref, type NavItem } from "@/lib/nav";
+import { FolderTree, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
+import { GLOBAL_NAV, toolSections, navigationHref, type NavItem } from "@/lib/nav";
 import { hrefWithScope, requiresSiteContext } from "@/lib/site-context";
 import { cn } from "@/lib/cn";
 import { PortfolioRail } from "./portfolio-rail";
@@ -23,17 +23,9 @@ export function CommandRail() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { scope, activeDomain } = useDomain();
-  const items: NavItem[] = [
-    { href: "/portfolio", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/sites", label: "Websites", icon: Building2 },
-    ...GLOBAL_NAV.filter((item) => !["/portfolio", "/sites", "/settings", "/action-centre"].includes(item.href)),
-    ...RESEARCH_NAV.filter((item) => item.href !== "/research"),
-    ...SITE_NAV.filter((item) => !["/domain", "/reports"].includes(item.href)),
-    SCAN_CENTRE,
-    ...TECHNICAL_SECONDARY,
-    ...KEYWORD_SECONDARY.filter((item) => item.href !== "/keyword-research"),
-    ...BACKLINK_SECONDARY,
-  ];
+  const items: NavItem[] = GLOBAL_NAV;
+  useEffect(() => { try { setPinned(window.localStorage.getItem("orwell.sidebar-pinned") !== "false"); } catch { setPinned(true); } }, []);
+
 
   useEffect(() => {
     if (!portfolioOpen) return;
@@ -52,6 +44,7 @@ export function CommandRail() {
 
   function togglePinned() {
     setPinned(!pinned);
+    try { window.localStorage.setItem("orwell.sidebar-pinned", String(!pinned)); } catch { /* In-memory preference remains available. */ }
     if (pinned) finishNavigation();
   }
 
@@ -93,16 +86,12 @@ export function CommandRail() {
               <span className={labelClass} aria-hidden={!expanded}>{label}</span>
             </Link>;
           })}
+          {expanded && <div className="mt-4 border-t border-border pt-3"><div className="px-3 pb-2 text-xs font-bold text-muted">{activeDomain?.name ?? "Workspace tools"}</div>{toolSections.filter((group) => activeDomain || group.label === "Work").map((group) => <details key={`${group.label}:${group.items.some((item) => item.href.split("?")[0] === pathname)}`} open={group.items.some((item) => item.href.split("?")[0] === pathname) || undefined} className="mb-1"><summary className="cursor-pointer rounded-md px-3 py-2 text-sm font-semibold text-ink hover:bg-workspace">{group.label}</summary><div className="ml-3 border-l border-border pl-2">{group.items.map((item) => <Link key={item.href} href={navigationHref(item, scope)} onNavigate={finishNavigation} aria-current={pathname === item.href.split("?")[0] ? "page" : undefined} className="block rounded-md px-3 py-2 text-sm text-muted hover:bg-workspace aria-[current=page]:font-semibold aria-[current=page]:text-purple">{item.label}</Link>)}</div></details>)}</div>}
         </nav>
         <div className="mt-2 flex shrink-0 flex-col gap-1 border-t border-border px-2 py-3">
           <button ref={portfolioButtonRef} onClick={() => setPortfolioOpen(!portfolioOpen)} aria-label="Websites and groups" aria-controls={portfolioOpen ? "portfolio-navigation" : undefined} aria-expanded={portfolioOpen} className={cn(rowClass, "border-transparent", portfolioOpen ? "bg-rail-selected text-purple" : "text-muted hover:bg-workspace hover:text-ink")}>
             <FolderTree className="mx-1 h-4 w-4 shrink-0" aria-hidden="true" /><span className={labelClass} aria-hidden={!expanded}>Websites and groups</span>
           </button>
-          {[{ href: activeDomain ? `/sites/${encodeURIComponent(activeDomain.id)}/settings` : "/settings", label: "Settings", icon: Settings }, { href: hrefWithScope("/action-centre", scope), label: "Action centre", icon: ListChecks }].map(({ href, label, icon: Icon }) => {
-            const path = href.split("?")[0]!;
-            const active = pathname === path || pathname.startsWith(`${path}/`);
-            return <Link key={href} href={href} onNavigate={finishNavigation} aria-label={label} aria-current={active ? "page" : undefined} className={cn(rowClass, "border-transparent", active ? "bg-rail-selected text-purple" : "text-muted hover:bg-workspace hover:text-ink")}><Icon className="mx-1 h-4 w-4 shrink-0" aria-hidden="true" /><span className={labelClass} aria-hidden={!expanded}>{label}</span></Link>;
-          })}
           <button ref={pinRef} onClick={togglePinned} aria-label={pinned ? "Collapse menu" : "Keep menu open"} aria-controls="command-navigation" aria-expanded={expanded} aria-pressed={pinned} className={cn(rowClass, "border-transparent text-muted hover:bg-workspace hover:text-purple")}>
             {pinned ? <PanelLeftClose className="mx-1 h-4 w-4 shrink-0" aria-hidden="true" /> : <PanelLeftOpen className="mx-1 h-4 w-4 shrink-0" aria-hidden="true" />}
             <span className={labelClass} aria-hidden={!expanded}>{pinned ? "Collapse menu" : "Keep menu open"}</span>

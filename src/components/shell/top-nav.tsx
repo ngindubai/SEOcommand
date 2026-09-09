@@ -5,10 +5,11 @@ import { usePathname, useRouter } from "next/navigation";
 import { ArrowLeft, LogOut, Moon, Search, Sun, Command, ChevronRight, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useDomain } from "./domain-context";
-import { GLOBAL_NAV, RESEARCH_NAV, SITE_NAV, navigationHref, type NavItem } from "@/lib/nav";
+import { GLOBAL_NAV, RESEARCH_NAV, SITE_NAV, toolSections, navigationHref, type NavItem } from "@/lib/nav";
 import { roleLabel } from "@/lib/auth";
 import { NotificationBell } from "./notification-bell";
 import { JobDrawer } from "./job-drawer";
+import { Modal } from "@/components/ui/modal";
 import { ProviderBalance } from "./provider-balance";
 
 interface SessionUser {
@@ -63,7 +64,7 @@ export function TopNav() {
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const tools = [...GLOBAL_NAV, ...RESEARCH_NAV.slice(1), ...SITE_NAV]
+    const tools = [...GLOBAL_NAV, ...RESEARCH_NAV.slice(1), ...SITE_NAV, ...toolSections.flatMap((section) => section.items)]
       .filter((item, index, items) => items.findIndex((candidate) => candidate.href === item.href && candidate.label === item.label) === index);
     if (!q) return { sites: sites.slice(0, 5), groups: groups.slice(0, 3), modules: tools.slice(0, 7) };
     return {
@@ -90,15 +91,15 @@ export function TopNav() {
 
   return (
     <div className="relative flex min-h-20 flex-wrap items-center gap-3 border-b border-border bg-card px-4 py-3 sm:flex-nowrap sm:px-6">
-      {pathname === "/portfolio" && <div className="mr-3 min-w-40 shrink-0"><h1 className="text-xl font-semibold tracking-tight text-ink">My Dashboard</h1><Link href="/sites" className="mt-1 flex items-center gap-1.5 text-2xs text-muted hover:text-purple"><ArrowLeft className="h-3 w-3" /> Back to website list</Link></div>}
+      {pathname === "/portfolio" && <div className="mr-3 min-w-0 shrink-0"><h1 className="text-xl font-semibold tracking-tight text-ink">{activeDomain ? activeDomain.name : "Portfolio"}</h1><Link href="/sites" className="mt-1 flex items-center gap-1.5 text-2xs text-muted hover:text-purple"><ArrowLeft className="h-3 w-3" /> Back to website list</Link></div>}
       <button
         type="button"
         onClick={() => setSearchOpen(true)}
-        className="flex h-9 min-w-0 flex-1 items-center gap-3 rounded-md border border-border bg-card px-3 text-left text-xs text-muted transition-colors hover:border-purple/40"
+        className="flex h-10 w-10 shrink-0 items-center justify-center gap-3 sm:w-auto sm:min-w-0 sm:flex-1 sm:justify-start rounded-md border border-border bg-card px-3 text-left text-xs text-muted transition-colors hover:border-purple/40"
         aria-label="Search websites, groups and modules"
       >
         <Search className="h-4 w-4 shrink-0" />
-        <span className="truncate">Search websites, research or tools…</span>
+        <span className="hidden truncate sm:inline">Search websites, research or tools…</span>
         <span className="ml-auto hidden items-center gap-1 rounded border border-border bg-card px-1.5 py-0.5 text-2xs sm:flex"><Command className="h-3 w-3" /> K</span>
       </button>
       <ProviderBalance />
@@ -111,16 +112,16 @@ export function TopNav() {
       <div className="hidden items-center gap-2 border-l border-border pl-3 sm:flex">
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple text-2xs font-bold text-white">{initials || "O"}</div>
         <div className="max-w-32 leading-tight">
-          <div className="truncate text-xs font-semibold text-ink">{user?.name || user?.email || "Orwell user"}</div>
-          <div className="text-[10px] text-muted">{roleLabel(user?.role ?? null)}</div>
+          <div className="truncate text-xs font-semibold text-ink">{user?.name || user?.email || "Loading…"}</div>
+          <div className="text-[12px] text-muted">{user ? roleLabel(user.role) : "Loading account…"}</div>
         </div>
         <button onClick={signOut} className="rounded-md p-2 text-muted hover:bg-workspace hover:text-ink" aria-label="Sign out"><LogOut className="h-4 w-4" /></button>
       </div>
 
       {searchOpen && (
-        <>
+        <Modal open={searchOpen} onClose={() => setSearchOpen(false)} title="Search websites and tools">
           <button className="fixed inset-0 z-40 cursor-default bg-ink/20 backdrop-blur-[2px]" onClick={() => setSearchOpen(false)} aria-label="Close search" />
-          <div className="absolute left-4 right-4 top-[72px] z-50 mx-auto max-w-2xl overflow-hidden rounded-lg border border-border bg-card shadow-pop sm:left-6 sm:right-auto sm:w-[640px]">
+          <div className="absolute left-4 right-4 top-16 z-50 mx-auto max-w-2xl overflow-hidden rounded-lg border border-border bg-card shadow-pop sm:left-6 sm:right-6">
             <div className="flex items-center gap-3 border-b border-border px-4 py-3">
               <Search className="h-5 w-5 text-purple" />
               <input aria-label="Search websites, groups and tools" autoFocus value={query} onChange={(event) => setQuery(event.target.value)} className="min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-muted" placeholder="Jump to a website, group or tool" />
@@ -138,14 +139,14 @@ export function TopNav() {
               </SearchSection>
             </div>
           </div>
-        </>
+        </Modal>
       )}
     </div>
   );
 }
 
 function SearchSection({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div className="mb-2"><div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-muted">{label}</div>{children}</div>;
+  return <div className="mb-2"><div className="px-2 py-1.5 text-[12px] font-bold uppercase tracking-[0.14em] text-muted">{label}</div>{children}</div>;
 }
 
 function SearchResult({ color = "#d87832", title, subtitle, onClick }: { color?: string; title: string; subtitle: string; onClick: () => void }) {

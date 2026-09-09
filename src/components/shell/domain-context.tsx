@@ -33,9 +33,25 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
   const [scope, setScopeState] = useState<Scope>("portfolio");
   const selection = useRef<Scope | null>(null);
   const [scopeReady, setScopeReady] = useState(false);
-  const [range, setRange] = useState<RangeKey>("28d");
+  const [range, setRangeState] = useState<RangeKey>("28d");
+  useEffect(() => {
+    let saved: string | null = null;
+    try { saved = window.localStorage.getItem("orwell.range"); } catch { /* Storage is optional. */ }
+    const requested = searchParams.get("range") ?? saved;
+    const next = requested === "7d" || requested === "90d" ? requested : "28d";
+    setRangeState(next);
+    try { window.localStorage.setItem("orwell.range", next); } catch { /* Keep in memory. */ }
+  }, [searchParams]);
+  const setRange = useCallback((next: RangeKey) => {
+    setRangeState(next);
+    try { window.localStorage.setItem("orwell.range", next); } catch { /* Keep in memory. */ }
+    const params = new URLSearchParams(searchParams);
+    params.set("range", next);
+    router.replace(`${pathname}?${params}${window.location.hash}`, { scroll: false });
+  }, [pathname, router, searchParams]);
   const [sites, setSites] = useState<Domain[]>([]);
   const [groups, setGroups] = useState<PortfolioGroup[]>([]);
+  const [sitesError, setSitesError] = useState<string | null>(null);
   const [sitesLoading, setSitesLoading] = useState(true);
   const setScope = useCallback((next: Scope) => {
     selection.current = next;
@@ -49,8 +65,11 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
       const response = await fetch("/api/sites", { cache: "no-store" });
       if (!response.ok) throw new Error(`Site registry request failed (${response.status})`);
       const body = await response.json() as { sites?: Domain[]; groups?: PortfolioGroup[] };
+      setSitesError(null);
       setSites(body.sites ?? []);
       if (body.groups) setGroups(body.groups);
+    } catch {
+      setSitesError("Your website list could not load. Retry to restore your workspace.");
     } finally {
       setSitesLoading(false);
     }
@@ -67,7 +86,7 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
         if (active) setSites(body.sites ?? []);
         if (active && body.groups) setGroups(body.groups);
       })
-      .catch(() => undefined)
+      .catch(() => { if (active) setSitesError("Your website list could not load. Retry to restore your workspace."); })
       .finally(() => {
         if (active) setSitesLoading(false);
       });
@@ -122,10 +141,10 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
       range,
       setRange,
     }),
-    [scope, setScope, activeDomain, activeGroup, sites, groups, sitesLoading, contextReady, refreshPortfolio, range],
+    [scope, setScope, activeDomain, activeGroup, sites, groups, sitesLoading, contextReady, refreshPortfolio, range, setRange],
   );
 
-  return <DomainCtx.Provider value={value}>{children}</DomainCtx.Provider>;
+  return <DomainCtx.Provider value={value}>{sitesError && <div role="alert" className="m-4 rounded-md border border-critical/20 bg-card p-4 text-sm">{sitesError} <button className="ml-3 min-h-10 rounded border border-border px-4 font-semibold" disabled={sitesLoading} onClick={() => void refreshPortfolio()}>{sitesLoading ? "Retrying…" : "Retry"}</button></div>}{(!sitesError || sites.length > 0) && children}</DomainCtx.Provider>;
 }
 
 export function useDomain(): DomainState {

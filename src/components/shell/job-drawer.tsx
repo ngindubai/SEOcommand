@@ -28,7 +28,7 @@ export function JobDrawer() {
   }, [active.length, load]);
   return <>
     <button type="button" disabled={!activeDomain} onClick={() => setOpen(true)} className="relative rounded-md p-2.5 text-muted hover:bg-workspace hover:text-ink disabled:opacity-35" aria-label="Open scan jobs">
-      <ScanLine className="h-4 w-4" />{active.length > 0 && <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-purple px-1 text-[9px] font-bold text-white">{active.length}</span>}
+      <ScanLine className="h-4 w-4" />{active.length > 0 && <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-purple px-1 text-[12px] font-bold text-white">{active.length}</span>}
     </button>
     {open && <><button className="fixed inset-0 z-40 bg-ink/25 backdrop-blur-[1px]" onClick={() => setOpen(false)} aria-label="Close scan drawer" /><aside className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-border bg-card shadow-pop">
       <div className="flex items-center justify-between border-b border-border px-5 py-4"><div><h2 className="text-base font-extrabold text-ink">Scan activity</h2><p className="mt-0.5 text-xs text-muted">{activeDomain?.name ?? "Website"}</p></div><button className="rounded-md p-2 text-muted hover:bg-workspace" onClick={() => setOpen(false)} aria-label="Close"><X className="h-4 w-4" /></button></div>

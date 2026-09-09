@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import {
   Activity, Bell, Bot, Check, ChevronRight, CircleDollarSign, Cloud, Code2, Database,
   FolderTree, Gauge, Globe2, History, KeyRound, MapPinned, PlugZap, Save, Settings2,
   SlidersHorizontal, Plus, Trash2, FileBarChart2,
 } from "lucide-react";
+import { navigateSafely, UnsavedChanges } from "@/components/ui/unsaved-changes";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button, Card, EmptyState, Skeleton, StatusBadge } from "@/components/ui/primitives";
 import { useDomain } from "@/components/shell/domain-context";
@@ -63,6 +64,11 @@ const BUDGET_CATEGORIES = [
 ] as const;
 
 export default function SiteSettingsPage() {
+  const { siteId } = useParams<{ siteId: string }>();
+  return <WebsiteSettingsForm key={siteId} />;
+}
+
+function WebsiteSettingsForm() {
   const params = useParams<{ siteId: string }>();
   const searchParams = useSearchParams();
   const siteId = String(params?.siteId ?? "");
@@ -76,13 +82,18 @@ export default function SiteSettingsPage() {
   const [role, setRole] = useState<string | null>(null);
   const [permissions, setPermissions] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [savedDraft, setSavedDraft] = useState("");
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
 
+  const currentSite = useRef(siteId);
+  useEffect(() => { currentSite.current = siteId; }, [siteId]);
   function load() {
+    const controller = new AbortController();
     Promise.all([
-      fetch(`/api/sites/${siteId}/settings`).then((response) => response.ok ? response.json() : Promise.reject(new Error("Website settings could not be loaded."))),
-      fetch("/api/auth/session").then((response) => response.json()),
+      fetch(`/api/sites/${siteId}/settings`, { signal: controller.signal }).then((response) => response.ok ? response.json() : Promise.reject(new Error("Website settings could not be loaded."))),
+      fetch("/api/auth/session", { signal: controller.signal }).then((response) => response.ok ? response.json() : Promise.reject(new Error("Your account permissions could not be loaded. Retry to continue."))),
     ]).then(([settings, session]: [SettingsData, { user?: { role?: string; grants?: SessionGrant[] } }]) => {
+      if (controller.signal.aborted || currentSite.current !== siteId) return;
       setData(settings); setDraft(settings.site); setGroupIds(settings.groupIds);
       setPrimaryGroupId(settings.groups.find((group) => group.primarySiteSlugs?.includes(siteId))?.id ?? settings.groupIds[0] ?? null);
       setRule(settings.notificationRule ?? { channels: [...DEFAULT_ALERT_CHANNELS], recipients: [], eventTypes: DEFAULT_EVENTS, rankDropThreshold: 5, trafficDropPct: 20, enabled: true });
@@ -102,8 +113,10 @@ export default function SiteSettingsPage() {
         viewer: ["view"],
       };
       setPermissions([...new Set(grants.length ? explicit : legacy[sessionRole ?? "viewer"] ?? ["view"])]);
+      setSavedDraft(JSON.stringify({ draft: settings.site, groupIds: settings.groupIds, primaryGroupId: settings.groups.find((group) => group.primarySiteSlugs?.includes(siteId))?.id ?? settings.groupIds[0] ?? null, rule: settings.notificationRule ?? { channels: [...DEFAULT_ALERT_CHANNELS], recipients: [], eventTypes: DEFAULT_EVENTS, rankDropThreshold: 5, trafficDropPct: 20, enabled: true } }));
       setRole(sessionRole); setScope(siteId);
-    }).catch((error: Error) => setNotice({ tone: "error", text: error.message }));
+    }).catch((error: Error) => { if (!controller.signal.aborted && currentSite.current === siteId) setNotice({ tone: "error", text: error.message }); });
+    return () => controller.abort();
   }
   useEffect(load, [siteId, setScope]);
   useEffect(() => {
@@ -130,22 +143,30 @@ export default function SiteSettingsPage() {
     };
   });
 
+  const dirty = Boolean(savedDraft && JSON.stringify({ draft, groupIds, primaryGroupId, rule }) !== savedDraft);
+  function discardDraft() {
+    if (!savedDraft) return;
+    const saved = JSON.parse(savedDraft);
+    setDraft(saved.draft); setGroupIds(saved.groupIds); setPrimaryGroupId(saved.primaryGroupId); setRule(saved.rule);
+  }
   async function save(body: Record<string, unknown>) {
+    if (saving) return;
+    if (body.section === "general" && (!draft?.name.trim() || !draft.host.trim())) { setNotice({ tone: "error", text: "Website name and host are required. Enter both before saving." }); return; }
     setSaving(true); setNotice(null);
-    const response = await fetch(`/api/sites/${siteId}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    const result = await response.json().catch(() => ({})) as { error?: string; synthetic?: boolean; settings?: SettingsData };
-    setSaving(false);
-    if (!response.ok) return setNotice({ tone: "error", text: result.error ?? "Settings could not be saved." });
-    setNotice({ tone: "success", text: "Saved. The change is recorded in the audit history." });
-    if (result.synthetic && result.settings) {
-      setData(result.settings);
-      setDraft(result.settings.site);
-      setGroupIds(result.settings.groupIds);
-      setPrimaryGroupId(result.settings.groups.find((group) => group.primarySiteSlugs?.includes(siteId))?.id ?? result.settings.groupIds[0] ?? null);
-      setRule(result.settings.notificationRule ?? rule);
-      return;
-    }
-    load();
+    try {
+      const response = await fetch(`/api/sites/${siteId}/settings`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const result = await response.json().catch(() => ({})) as { error?: string; synthetic?: boolean; settings?: SettingsData };
+      if (!response.ok) throw new Error(result.error ?? "Settings could not be saved. Your draft is retained.");
+      setNotice({ tone: "success", text: "Saved. The change is recorded in the audit history." });
+      if (result.synthetic && result.settings) {
+        const settings = result.settings;
+        const primary = settings.groups.find((group) => group.primarySiteSlugs?.includes(siteId))?.id ?? settings.groupIds[0] ?? null;
+        const nextRule = settings.notificationRule ?? rule;
+        setData(settings); setDraft(settings.site); setGroupIds(settings.groupIds); setPrimaryGroupId(primary); setRule(nextRule);
+        setSavedDraft(JSON.stringify({ draft: settings.site, groupIds: settings.groupIds, primaryGroupId: primary, rule: nextRule }));
+      } else load();
+    } catch (reason) { setNotice({ tone: "error", text: reason instanceof Error ? reason.message : "Settings could not be saved. Your draft is retained." }); }
+    finally { setSaving(false); }
   }
 
   if (!data || !draft || !rule) {
@@ -154,14 +175,17 @@ export default function SiteSettingsPage() {
 
   return (
     <div className="animate-in space-y-6">
+      <UnsavedChanges dirty={dirty} saving={saving} onDiscard={discardDraft} onSave={() => document.querySelector<HTMLButtonElement>("[data-save-settings]")?.click()} />
+      {dirty && <p role="status" className="text-sm font-semibold text-purple">Unsaved changes to this website</p>}
+      <label className="block text-sm font-semibold lg:hidden">Settings category<select aria-label="Settings category" value={tab} onChange={(event) => { const next = event.target.value as TabId; navigateSafely(() => setTab(next)); }} className="mt-2 h-11 w-full rounded-md border border-border bg-card px-3">{TABS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>
       <PageHeader title={`${draft.name} settings`} description="Website-specific controls for data collection, spend, connectors, alerting and access. Paid work remains approval-gated." actions={<StatusBadge label={draft.lifecycleStatus} tone={draft.lifecycleStatus === "active" ? "success" : draft.lifecycleStatus === "paused" ? "warning" : "neutral"} />} />
-      {notice && <div role="status" className={cn("flex items-center gap-2 rounded-md border px-4 py-3 text-xs font-semibold", notice.tone === "success" ? "border-success/25 bg-success/10 text-success" : "border-critical/25 bg-critical/10 text-critical")}>{notice.tone === "success" && <Check className="h-4 w-4" />}{notice.text}</div>}
+      {notice && <div role={notice.tone === "error" ? "alert" : "status"} className={cn("flex items-center gap-2 rounded-md border px-4 py-3 text-sm font-semibold", notice.tone === "success" ? "border-success/25 bg-success/10 text-success" : "border-critical/25 bg-critical/10 text-critical")}>{notice.tone === "success" && <Check className="h-4 w-4" />}{notice.text}</div>}
       <div className="grid gap-5 lg:grid-cols-[240px_minmax(0,1fr)]">
-        <Card className="h-fit p-2 lg:sticky lg:top-4">
+        <Card className="hidden h-fit p-2 lg:sticky lg:top-4 lg:block">
           <nav aria-label="Website settings" className="space-y-1">
             {TABS.map((item) => {
               const Icon = item.icon;
-              return <button key={item.id} onClick={() => setTab(item.id)} className={cn("flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-semibold", tab === item.id ? "bg-ink text-card" : "text-muted hover:bg-workspace hover:text-ink")}><Icon className={cn("h-4 w-4", tab === item.id && "text-[#7FE4EA]")} /><span className="flex-1">{item.label}</span><ChevronRight className="h-3.5 w-3.5 opacity-45" /></button>;
+              return <button key={item.id} onClick={() => navigateSafely(() => setTab(item.id))} className={cn("flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left text-sm font-semibold", tab === item.id ? "bg-ink text-card" : "text-muted hover:bg-workspace hover:text-ink")}><Icon className={cn("h-4 w-4", tab === item.id && "text-[#7FE4EA]")} /><span className="flex-1">{item.label}</span><ChevronRight className="h-3.5 w-3.5 opacity-45" /></button>;
             })}
           </nav>
         </Card>
@@ -186,7 +210,7 @@ export default function SiteSettingsPage() {
               }
               if (!primaryGroupId) setPrimaryGroupId(group.id);
               return [...values, group.id];
-            })} /><span className="h-2.5 w-2.5 rounded-full" style={{ background: group.color }} /><span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{group.name}</span></label>{groupIds.includes(group.id) && <button type="button" disabled={!canEdit} onClick={() => setPrimaryGroupId(group.id)} className={cn("mt-2 w-full rounded px-2 py-1 text-[10px] font-bold uppercase tracking-wide", primaryGroupId === group.id ? "bg-purple text-white" : "bg-card text-muted hover:text-ink")}>{primaryGroupId === group.id ? "Primary folder" : "Make primary"}</button>}</div>)}</div>
+            })} /><span className="h-2.5 w-2.5 rounded-full" style={{ background: group.color }} /><span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{group.name}</span></label>{groupIds.includes(group.id) && <button type="button" disabled={!canEdit} onClick={() => setPrimaryGroupId(group.id)} className={cn("mt-2 w-full rounded px-2 py-1 text-[12px] font-bold uppercase tracking-wide", primaryGroupId === group.id ? "bg-purple text-white" : "bg-card text-muted hover:text-ink")}>{primaryGroupId === group.id ? "Primary folder" : "Make primary"}</button>}</div>)}</div>
             <FieldGrid>
               <Field label="Primary market"><Input value={draft.primaryMarket} disabled={!canEdit} onChange={(value) => setDraft({ ...draft, primaryMarket: value })} /></Field>
               <Field label="Location code"><NumberInput value={draft.locationCode} disabled={!canEdit} onChange={(value) => setDraft({ ...draft, locationCode: value })} /></Field>
@@ -233,7 +257,7 @@ export default function SiteSettingsPage() {
                   <div className="font-serif text-3xl font-bold tracking-tight text-[#11182B]">Monthly SEO performance</div>
                   <div className="mt-2 text-xs text-[#65708A]">A client-facing preview for {draft.host}</div>
                 </div>
-                <div className="border-l border-[#DDE2EC] pl-5 text-[10px] uppercase tracking-[0.14em] text-[#65708A]"><div>Prepared by</div><div className="mt-1 text-xs font-bold normal-case tracking-normal text-[#11182B]">{reportBranding.preparedBy}</div></div>
+                <div className="border-l border-[#DDE2EC] pl-5 text-[12px] uppercase tracking-[0.14em] text-[#65708A]"><div>Prepared by</div><div className="mt-1 text-xs font-bold normal-case tracking-normal text-[#11182B]">{reportBranding.preparedBy}</div></div>
               </div>
             </div>
             <FieldGrid>
@@ -305,7 +329,7 @@ export default function SiteSettingsPage() {
           {tab === "access" && <SettingsPanel title="Access & audit" description="Owners can view all evidence and approve budgets. Admins and SEO operators can change operational settings." icon={<History className="h-5 w-5" />}>
             <div className="mb-6 grid gap-3 sm:grid-cols-3"><AccessRole label="Admin" detail="Full access and budget approval" color="#335CFF" /><AccessRole label="SEO operator" detail="Operational changes; no budget approval" color="#12B8C4" /><AccessRole label="Owner" detail="Read-only plus budget approval" color="#F2B544" /></div>
             <h3 className="mb-3 text-sm font-bold text-ink">Recent changes</h3>
-            {data.auditEvents.length === 0 ? <EmptyState title="No recorded changes yet" description="Settings and notification decisions will be recorded here." /> : <div className="divide-y divide-border rounded-md border border-border">{data.auditEvents.map((event) => <div key={event.id} className="flex gap-3 p-3"><span className="mt-1 h-2 w-2 rounded-full bg-[#12B8C4]" /><div className="min-w-0 flex-1"><div className="text-xs font-semibold text-ink">{event.summary}</div><div className="mt-1 text-[10px] text-muted">{event.actorEmail || "System"} · {event.actorRole?.replace("_", " ") || "system"} · {new Date(event.createdAt).toLocaleString()}</div></div><StatusBadge label={event.area} /></div>)}</div>}
+            {data.auditEvents.length === 0 ? <EmptyState title="No recorded changes yet" description="Settings and notification decisions will be recorded here." /> : <div className="divide-y divide-border rounded-md border border-border">{data.auditEvents.map((event) => <div key={event.id} className="flex gap-3 p-3"><span className="mt-1 h-2 w-2 rounded-full bg-[#12B8C4]" /><div className="min-w-0 flex-1"><div className="text-xs font-semibold text-ink">{event.summary}</div><div className="mt-1 text-[12px] text-muted">{event.actorEmail || "System"} · {event.actorRole?.replace("_", " ") || "system"} · {new Date(event.createdAt).toLocaleString()}</div></div><StatusBadge label={event.area} /></div>)}</div>}
           </SettingsPanel>}
         </div>
       </div>
@@ -321,7 +345,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function Input({ value, onChange, disabled, placeholder }: { value: string; onChange: (value: string) => void; disabled?: boolean; placeholder?: string }) { return <input value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} placeholder={placeholder} className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-ink outline-none placeholder:text-muted focus:border-purple disabled:bg-workspace disabled:text-muted" />; }
 function NumberInput({ value, onChange, disabled, step = 1 }: { value: number; onChange: (value: number) => void; disabled?: boolean; step?: number }) { return <input type="number" min={0} step={step} value={value} onChange={(event) => onChange(Number(event.target.value))} disabled={disabled} className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm text-ink outline-none focus:border-purple disabled:bg-workspace disabled:text-muted" />; }
 function Select({ value, options, onChange, disabled }: { value: string; options: string[]; onChange: (value: string) => void; disabled?: boolean }) { return <select value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} className="h-10 w-full rounded-md border border-border bg-card px-3 text-sm capitalize text-ink outline-none focus:border-purple disabled:bg-workspace disabled:text-muted">{options.map((option) => <option key={option} value={option}>{option.replace(/_/g, " ")}</option>)}</select>; }
-function SaveBar({ canSave, saving, role, onSave, label = "Save changes" }: { canSave: boolean; saving: boolean; role: string | null; onSave: () => void; label?: string }) { return <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4"><p className="text-2xs text-muted">{canSave ? "Changes are audited and apply only to this website." : `Your ${role === "manager" ? "Owner" : "Viewer"} role is read-only for this section.`}</p><Button variant="primary" disabled={!canSave || saving} onClick={onSave}><Save className="h-4 w-4" />{saving ? "Saving…" : label}</Button></div>; }
+function SaveBar({ canSave, saving, role, onSave, label = "Save changes" }: { canSave: boolean; saving: boolean; role: string | null; onSave: () => void; label?: string }) { return <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4"><p className="text-2xs text-muted">{canSave ? "Changes are audited and apply only to this website." : `Your ${role === "manager" ? "Owner" : "Viewer"} role is read-only for this section.`}</p><Button data-save-settings variant="primary" disabled={!canSave || saving} onClick={onSave}><Save className="h-4 w-4" />{saving ? "Saving…" : label}</Button></div>; }
 function Metric({ label, value, color }: { label: string; value: string; color: string }) { return <div className="rounded-md border border-border p-4"><div className="mb-3 h-1.5 w-10 rounded-full" style={{ background: color }} /><div className="text-2xs font-bold uppercase tracking-wide text-muted">{label}</div><div className="mt-1 text-xl font-extrabold text-ink tnum">{value}</div></div>; }
 function ConnectorCard({ icon, name, status, detail, color, children }: { icon: React.ReactNode; name: string; status: string; detail: string; color: string; children?: React.ReactNode }) { return <div className="rounded-lg border border-border p-4"><div className="flex gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-md" style={{ background: `${color}18`, color }}>{icon}</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="text-sm font-bold text-ink">{name}</h3><StatusBadge label={status} tone={status === "connected" || status === "approved" ? "success" : "warning"} /></div><p className="mt-1 truncate text-2xs text-muted" title={detail}>{detail}</p></div></div>{children && <div className="mt-4">{children}</div>}</div>; }
 function EditableConnector({ kind, existing, canEdit, saving, onSave }: { kind: ConnectionKind; existing?: Connection; canEdit: boolean; saving: boolean; onSave: (url: string) => void }) {
@@ -423,6 +447,6 @@ function AiPromptSettings({ siteId, canEdit }: { siteId: string; canEdit: boolea
       </div>
       <div className="rounded-lg border border-border bg-workspace/50 p-4"><div className="text-xs font-bold uppercase tracking-wide text-muted">Default measurement</div><div className="mt-4 space-y-3"><Metric label="Platforms" value={String(platforms.length)} color="#7137F5" /><Metric label="Cadence" value={cadence} color="#12B8C4" /><Metric label="Samples" value={String(sampleCount)} color="#F2B544" /></div><p className="mt-4 text-2xs leading-5 text-muted">Every run is forecast and blocked before spend if this website or the AI category reaches its approved limit.</p></div>
     </div>
-    <div className="mt-7 border-t border-border pt-5"><div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-bold text-ink">Tracked prompts</h3><StatusBadge label={`${prompts.length} active`} tone={prompts.length ? "info" : "neutral"} /></div>{prompts.length ? <div className="divide-y divide-border rounded-md border border-border">{prompts.map((prompt) => <div key={prompt.id} className="flex items-start gap-3 p-3"><span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-purple" /><div className="min-w-0 flex-1"><div className="text-xs font-semibold leading-5 text-ink">{prompt.prompt}</div><div className="mt-1 text-[10px] text-muted">{prompt.topic} · {prompt.platforms.length} platforms · {prompt.cadence} · {prompt.sampleCount} sample{prompt.sampleCount === 1 ? "" : "s"}</div></div><button disabled={!canEdit || busy} onClick={() => void removePrompt(prompt.id)} className="rounded p-1.5 text-muted hover:bg-critical/10 hover:text-critical" aria-label={`Remove ${prompt.prompt}`}><Trash2 className="h-3.5 w-3.5" /></button></div>)}</div> : <EmptyState title="No prompt checks configured" description="Add a manual question, import a CSV or approve discovered prompts from AI Visibility." />}</div>
+    <div className="mt-7 border-t border-border pt-5"><div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-bold text-ink">Tracked prompts</h3><StatusBadge label={`${prompts.length} active`} tone={prompts.length ? "info" : "neutral"} /></div>{prompts.length ? <div className="divide-y divide-border rounded-md border border-border">{prompts.map((prompt) => <div key={prompt.id} className="flex items-start gap-3 p-3"><span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-purple" /><div className="min-w-0 flex-1"><div className="text-xs font-semibold leading-5 text-ink">{prompt.prompt}</div><div className="mt-1 text-[12px] text-muted">{prompt.topic} · {prompt.platforms.length} platforms · {prompt.cadence} · {prompt.sampleCount} sample{prompt.sampleCount === 1 ? "" : "s"}</div></div><button disabled={!canEdit || busy} onClick={() => void removePrompt(prompt.id)} className="rounded p-1.5 text-muted hover:bg-critical/10 hover:text-critical" aria-label={`Remove ${prompt.prompt}`}><Trash2 className="h-3.5 w-3.5" /></button></div>)}</div> : <EmptyState title="No prompt checks configured" description="Add a manual question, import a CSV or approve discovered prompts from AI Visibility." />}</div>
   </SettingsPanel>;
 }

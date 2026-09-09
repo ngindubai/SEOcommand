@@ -236,25 +236,25 @@ export default function ContentIntelligencePage() {
           {/* KPI row — measured values only; "—" until the dataset syncs. */}
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <KpiCard
-              label="Pages with traffic"
+              label="Pages with search visibility"
               value={pages ? fullNumber(pages.length) : "—"}
-              hint="GSC pages, last 28 days"
+              hint={`Saved GSC pages · through ${pagesDs?.provenance.rangeEnd ?? pagesDs?.capturedOn ?? "unavailable"}`}
               accent
             />
             <KpiCard
               label="Total page clicks"
               value={totalClicks != null ? compactNumber(totalClicks) : "—"}
-              hint="Sum across tracked pages"
+              hint="Sum across saved GSC page rows"
             />
             <KpiCard
-              label="Pages gaining"
+              label="Top gaining pages"
               value={gains ? fullNumber(gains.length) : "—"}
-              hint="Clicks up vs previous 28 days"
+              hint="Top saved results; clicks vs previous 28 days"
             />
             <KpiCard
-              label="Pages declining"
+              label="Top declining pages"
               value={losses ? fullNumber(losses.length) : "—"}
-              hint="Clicks down vs previous 28 days"
+              hint="Top saved results; clicks vs previous 28 days"
             />
           </div>
 
@@ -271,7 +271,7 @@ export default function ContentIntelligencePage() {
                 <div>
                   <h3 className="text-sm font-semibold text-ink">Page inventory</h3>
                   <p className="mt-0.5 text-2xs text-muted">
-                    Every page with search traffic in the last 28 days — from Search Console.
+                    Stored pages with clicks or impressions in the saved 28-day period — from Search Console.
                   </p>
                 </div>
                 <SourceBadge

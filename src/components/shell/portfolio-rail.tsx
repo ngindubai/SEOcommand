@@ -172,7 +172,7 @@ export function PortfolioRail() {
         <GripVertical className="h-3.5 w-3.5 shrink-0 cursor-grab text-muted/40 opacity-0 group-hover/site:opacity-100" aria-hidden />
         <button onClick={() => chooseSite(site.id)} style={{ paddingLeft: `${8 + depth * 14}px` }} className={cn("flex min-w-0 flex-1 items-center gap-2.5 rounded-md py-2 pr-1 text-left transition-colors", active ? "bg-rail-selected text-ink" : "text-muted hover:bg-card hover:text-ink")}>
           <Circle className="h-2.5 w-2.5 shrink-0" style={{ color: site.accent, fill: site.accent }} />
-          <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{site.name}</span><span className="block truncate text-[10px] opacity-65">{site.host}</span></span>
+          <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold">{site.name}</span><span className="block truncate text-[12px] opacity-65">{site.host}</span></span>
         </button>
         <Link href={`/sites/${site.id}/settings`} className="invisible mr-1 rounded p-1.5 text-muted hover:bg-card hover:text-ink group-hover/site:visible focus:visible" aria-label={`Settings for ${site.name}`}><Settings2 className="h-3.5 w-3.5" /></Link>
       </div>
@@ -210,7 +210,7 @@ export function PortfolioRail() {
               <button onClick={() => chooseGroup(group.id)} onDoubleClick={() => { setEditingId(group.id); setEditingName(group.name); }} className={cn("flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-2 text-left", active ? "bg-rail-selected text-ink" : "text-muted hover:bg-card hover:text-ink")}>
                 {open ? <FolderOpen className="h-3.5 w-3.5" style={{ color: group.color, fill: `${group.color}25` }} /> : <Folder className="h-3.5 w-3.5" style={{ color: group.color, fill: `${group.color}30` }} />}
                 <span className="min-w-0 flex-1 truncate text-xs font-semibold">{group.name}</span>
-                <span className="rounded-full bg-card px-1.5 py-0.5 text-[10px]">{group.siteSlugs.length}</span>
+                <span className="rounded-full bg-card px-1.5 py-0.5 text-[12px]">{group.siteSlugs.length}</span>
               </button>
             )}
             <button onClick={(event) => { event.stopPropagation(); setMenuId(menuId === group.id ? null : group.id); }} className="mr-1 rounded p-1 text-muted opacity-0 hover:bg-card hover:text-ink focus:opacity-100 group-hover/folder:opacity-100" aria-label={`Actions for ${group.name}`}><Ellipsis className="h-3.5 w-3.5" /></button>
@@ -224,7 +224,7 @@ export function PortfolioRail() {
             )}
           </div>
           {open && <div>{groupRows(group.id, depth + 1)}{primarySites.map((site) => siteRow(site, depth + 1))}</div>}
-          {open && children.length === 0 && primarySites.length === 0 && <div className="py-2 pl-10 text-[10px] text-muted">Drop websites here</div>}
+          {open && children.length === 0 && primarySites.length === 0 && <div className="py-2 pl-10 text-[12px] text-muted">Drop websites here</div>}
         </div>
       );
     });
@@ -248,7 +248,7 @@ export function PortfolioRail() {
       </nav>
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex items-center justify-between px-4 pb-2 pt-4">
-          <div><div className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">Portfolio map</div><div className="mt-0.5 text-2xs text-muted">{sites.length} websites · drag to organise</div></div>
+          <div><div className="text-[12px] font-bold uppercase tracking-[0.14em] text-muted">Portfolio map</div><div className="mt-0.5 text-2xs text-muted">{sites.length} websites · drag to organise</div></div>
           <Link href="/sites" className="rounded-md p-2 text-muted hover:bg-card hover:text-ink" aria-label="Manage portfolio folders"><FolderPlus className="h-4 w-4" /></Link>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3" onClick={() => menuId && setMenuId(null)}>
@@ -266,14 +266,14 @@ export function PortfolioRail() {
                   if (source) void updateGroup(groupId, { parentId: null }, `Moved ${source.name} to the portfolio root.`);
                 }
               }}>
-                <div className="px-2 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.12em] text-muted">Unfiled</div>
+                <div className="px-2 pb-1 pt-2 text-[12px] font-bold uppercase tracking-[0.12em] text-muted">Unfiled</div>
                 {unfiled.map((site) => siteRow(site))}
-                {unfiled.length === 0 && <div className="px-2 py-2 text-[10px] text-muted">Drop here to remove folder memberships</div>}
+                {unfiled.length === 0 && <div className="px-2 py-2 text-[12px] text-muted">Drop here to remove folder memberships</div>}
               </div>
             )}
           </div>
         </div>
-        {notice && <div role="status" className="mx-3 mb-2 rounded-md border border-border bg-card px-3 py-2 text-[11px] leading-4 text-ink shadow-sm">{notice}</div>}
+        {notice && <div role="status" className="mx-3 mb-2 rounded-md border border-border bg-card px-3 py-2 text-[12px] leading-4 text-ink shadow-sm">{notice}</div>}
         <div className="border-t border-border p-3">
           <Link href="/sites/new" className="flex items-center justify-center gap-2 rounded-md border border-dashed border-purple/40 bg-purple/5 px-3 py-2.5 text-sm font-semibold text-purple hover:bg-purple/10"><Plus className="h-4 w-4" /> Add website</Link>
         </div>

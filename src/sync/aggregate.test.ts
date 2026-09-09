@@ -3,7 +3,7 @@ import { aggregateBundles } from "./aggregate";
 import type { DomainLiveBundle } from "@/lib/live";
 import type { Provenance } from "@/lib/types";
 
-const prov = { source: "google-search-console", mode: "live" } as unknown as Provenance;
+const prov = { source: "google-search-console", mode: "live", rangeStart: "2026-06-04", rangeEnd: "2026-07-01" } as unknown as Provenance;
 
 function ds<T>(data: T, capturedOn = "2026-07-01") {
   return { data, capturedOn, provenance: prov };

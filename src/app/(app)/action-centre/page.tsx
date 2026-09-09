@@ -1,6 +1,7 @@
 "use client";
+import { EvidenceMessage } from "@/components/ui/evidence-message";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useDomain } from "@/components/shell/domain-context";
@@ -14,8 +15,11 @@ import { cn } from "@/lib/cn";
 export default function ActionCentrePage() {
   const { scope } = useDomain();
   const params = useSearchParams();
-  const { data, loading, error, refresh: load } = useActionQueue(scope);
   const [filter, setFilter] = useState<"all" | "urgent" | "alerts" | "recommendations" | "research">(params.get("priority") === "urgent" ? "urgent" : "all");
+  const [page, setPage] = useState(0);
+  const { data, loading, error, refresh: load } = useActionQueue(scope, { page, filter });
+  useEffect(() => { setPage(0); }, [scope, filter]);
+  const [success, setSuccess] = useState("");
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [executionItemId, setExecutionItemId] = useState<string | null>(null);
@@ -29,15 +33,20 @@ export default function ActionCentrePage() {
   }), [data, filter]);
 
   async function updateNotice(item: ActionItem, action: "resolve" | "snooze" | "dismiss") {
-    const response = await fetch("/api/notifications", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: item.id, action }),
-    });
-    if (response.ok) load();
+    if (reviewingId) return;
+    setReviewingId(item.id); setActionError(null); setSuccess("");
+    try {
+      const response = await fetch("/api/notifications", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: item.id, action }) });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error ?? "The alert could not be updated. Try again.");
+      setSuccess(action === "snooze" ? "Alert snoozed for one day." : action === "dismiss" ? "Alert dismissed." : "Alert resolved.");
+      load(); window.dispatchEvent(new Event("orwell:notifications-changed"));
+    } catch (reason) { setActionError(reason instanceof Error ? reason.message : "The update failed. Try again."); }
+    finally { setReviewingId(null); }
   }
 
   async function reviewResearch(item: ActionItem, action: "approve" | "reject") {
+    if (reviewingId) return;
     setReviewingId(item.id); setActionError(null);
     try {
       const response = await fetch("/api/research-mappings", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: item.id, action }) });
@@ -57,28 +66,30 @@ export default function ActionCentrePage() {
       {data && !data.available && <p className="text-sm text-muted">Task data isn’t connected yet.</p>}
 
       <section className="grid gap-3 md:grid-cols-3">
-        <SignalCard icon={<Zap className="h-5 w-5" />} label="Needs attention now" value={data?.counts.urgent ?? 0} note="Critical and high-priority signals" color="#FF6B5E" />
-        <SignalCard icon={<ListChecks className="h-5 w-5" />} label="Open work" value={data?.counts.open ?? 0} note="Alerts, approvals and approved work" color="#335CFF" />
-        <SignalCard icon={<CirclePause className="h-5 w-5" />} label="Paused websites" value={data?.counts.paused ?? 0} note="Free checks continue where possible" color="#F2B544" />
+        <SignalCard icon={<Zap className="h-5 w-5" />} label="Needs attention now" value={data?.available ? data.counts.urgent : "—"} note="Critical and high-priority signals" color="#FF6B5E" />
+        <SignalCard icon={<ListChecks className="h-5 w-5" />} label="Open work" value={data?.available ? data.counts.open : "—"} note="Alerts, approvals and approved work" color="#335CFF" />
+        <SignalCard icon={<CirclePause className="h-5 w-5" />} label="Paused websites" value={data?.available ? data.counts.paused : "—"} note="Free checks continue where possible" color="#F2B544" />
       </section>
+      {success && <p role="status" className="text-sm text-success">{success}</p>}
       {actionError && <div role="alert" className="rounded-md border border-critical/25 bg-critical/5 px-4 py-3 text-xs font-semibold text-critical">{actionError}</div>}
       {executionItemId && <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-success/25 bg-success/5 px-4 py-3"><div className="text-xs font-semibold text-success">Opportunity approved. Its evidence, owner and page plan are ready for execution.</div><Link href={`/work?item=${encodeURIComponent(executionItemId)}`} className="inline-flex items-center gap-1 text-xs font-bold text-purple">Continue work <ArrowRight className="h-3.5 w-3.5" /></Link></div>}
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
         <Card className="overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
-            <div><h2 className="text-base font-extrabold tracking-tight text-ink">Prioritised queue</h2><p className="text-2xs text-muted">Ordered by severity and impact—not arrival time alone.{data?.meta?.hasMore ? ` Showing the top ${data.meta.returned} of ${data.meta.total}.` : ""}</p></div>
+            <div><h2 className="text-base font-extrabold tracking-tight text-ink">Prioritised queue</h2><p className="text-2xs text-muted">Ordered by severity and impact.{data?.meta?.hasMore ? ` Page ${page + 1} · ${data.meta.total} matching items.` : ""}</p></div>
             <div className="flex rounded-md border border-border bg-workspace p-0.5">
               {(["all", "urgent", "alerts", "research", "recommendations"] as const).map((value) => <button key={value} onClick={() => setFilter(value)} className={cn("rounded px-2.5 py-1.5 text-2xs font-semibold capitalize", filter === value ? "bg-card text-ink shadow-sm" : "text-muted hover:text-ink")}>{value}</button>)}
             </div>
           </div>
-          {loading ? <div className="space-y-3 p-5">{Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} className="h-24" />)}</div> : items.length === 0 ? <div className="p-5"><EmptyState title="Queue is clear" description="New risks, mapped research and approved recommendations will appear here automatically." icon={<CheckCircle2 className="h-7 w-7 text-success" />} /></div> : <div className="divide-y divide-border">{items.map((item) => <article key={`${item.kind}-${item.id}`} className="group grid gap-4 px-5 py-4 hover:bg-workspace/60 sm:grid-cols-[8px_minmax(0,1fr)_auto]">
+          <div className="flex items-center justify-between border-b border-border p-3"><Button size="sm" disabled={!page || loading} onClick={() => setPage(page - 1)}>Previous</Button><span className="text-xs text-muted">{data ? `${page * 20 + (data.items.length ? 1 : 0)}–${page * 20 + data.items.length} of ${data.meta?.total ?? data.items.length}` : "Loading queue…"}</span><Button size="sm" disabled={!data?.meta?.hasMore || loading} onClick={() => setPage(page + 1)}>Next</Button></div>
+          {loading ? <div className="space-y-3 p-5">{Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} className="h-24" />)}</div> : error && !data ? <div className="p-5"><Button onClick={load}>Retry loading the queue</Button></div> : items.length === 0 ? <div className="p-5"><EmptyState title="Queue is clear" description="New risks, mapped research and approved recommendations will appear here automatically." icon={<CheckCircle2 className="h-7 w-7 text-success" />} /></div> : <div className="divide-y divide-border">{items.map((item) => <article key={`${item.kind}-${item.id}`} className="group grid gap-4 px-5 py-4 hover:bg-workspace/60 sm:grid-cols-[8px_minmax(0,1fr)_auto]">
             <span className="hidden rounded-full sm:block" style={{ background: item.severity === "critical" ? "#FF5C62" : item.severity === "high" ? "#FF6B5E" : item.severity === "medium" ? "#F2B544" : "#12B8C4" }} />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2"><SeverityBadge severity={item.severity} /><StatusBadge label={item.kind} tone={item.kind === "alert" ? "warning" : "info"} />{item.kind === "research" && <StatusBadge label="awaiting approval" tone="warning" />}<span className="text-2xs font-semibold text-muted">Priority {item.score}</span></div>
               <h3 className="mt-2 text-sm font-bold text-ink">{item.title}</h3>
-              {item.detail && <p className="mt-1 text-xs leading-5 text-muted">{item.detail}</p>}
-              {item.kind === "research" && item.duplicateWarning?.severity === "warning" && <div className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-warning/25 bg-warning/5 px-2 py-1 text-[10px] font-semibold text-warning"><AlertTriangle className="h-3 w-3" />{item.duplicateWarning.summary ?? "Possible overlap found"}</div>}
+              {item.detail && <EvidenceMessage detail={item.detail} />}
+              {item.kind === "research" && item.duplicateWarning?.severity === "warning" && <div className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-warning/25 bg-warning/5 px-2 py-1 text-[12px] font-semibold text-warning"><AlertTriangle className="h-3 w-3" />{item.duplicateWarning.summary ?? "Possible overlap found"}</div>}
               <div className="mt-2 flex items-center gap-2 text-2xs text-muted"><span>{item.siteName}</span><span>•</span><time>{new Date(item.createdAt).toLocaleDateString()}</time></div>
             </div>
             <div className="flex items-center gap-1 self-center">
@@ -109,9 +120,9 @@ export default function ActionCentrePage() {
   );
 }
 
-function SignalCard({ icon, label, value, note, color }: { icon: React.ReactNode; label: string; value: number; note: string; color: string }) {
+function SignalCard({ icon, label, value, note, color }: { icon: React.ReactNode; label: string; value: number | string; note: string; color: string }) {
   return <Card className="surface-lift relative overflow-hidden p-5"><span className="absolute inset-y-0 left-0 w-1.5" style={{ background: color }} /><div className="flex items-start justify-between"><div><div className="text-2xs font-bold uppercase tracking-[0.12em] text-muted">{label}</div><div className="mt-2 text-3xl font-extrabold tracking-tight text-ink tnum">{value}</div><p className="mt-1 text-2xs text-muted">{note}</p></div><div className="rounded-md p-2.5" style={{ color, background: `${color}18` }}>{icon}</div></div></Card>;
 }
 function MiniFlow({ value, label, color }: { value: string; label: string; color: string }) {
-  return <div className="rounded-md bg-card/10 p-2 text-center"><div className="mx-auto flex h-6 w-6 items-center justify-center rounded-full text-2xs font-bold text-white" style={{ background: color }}>{value}</div><div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-card/60">{label}</div></div>;
+  return <div className="rounded-md bg-card/10 p-2 text-center"><div className="mx-auto flex h-6 w-6 items-center justify-center rounded-full text-2xs font-bold text-white" style={{ background: color }}>{value}</div><div className="mt-1 text-[12px] font-bold uppercase tracking-wide text-card/60">{label}</div></div>;
 }

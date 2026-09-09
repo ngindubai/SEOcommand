@@ -7,7 +7,9 @@ import type {
   ReferringDomain,
 } from "@/lib/types";
 import type { DomainHeadline, DomainLiveBundle, OnPageResult, PortfolioLive } from "@/lib/live";
-import { listManagedSites } from "@/platform/site-store";
+import { getManagedSite, listManagedSites } from "@/platform/site-store";
+import { qualifyRecommendations, normalizedHost } from "@/lib/recommendation-quality";
+import { searchPeriod } from "@/lib/reporting";
 import { computeAuthorityScore } from "@/lib/scoring";
 import {
   hasDatabase,
@@ -37,6 +39,13 @@ function attach(bundle: DomainLiveBundle, snaps: StoredSnapshot[]): void {
     const collected = s.provenance?.collectedAt ?? s.capturedOn;
     if (!last || collected > last) last = collected;
   }
+  const audit = bundle.datasets.onpage?.data;
+  if (audit && audit.methodologyVersion !== 2 && audit.crawlRun) {
+    // Older page counts used an internal-link fallback. Retain the original snapshot;
+    // the read model withholds that unverified count until a corrected crawl exists.
+    bundle.datasets.onpage = { ...bundle.datasets.onpage!, data: { ...audit, breakdown: [], crawlRun: { ...audit.crawlRun, pagesCrawled: null } } };
+  }
+  if (bundle.datasets.recommendations) bundle.datasets.recommendations = { ...bundle.datasets.recommendations, data: qualifyRecommendations(bundle) };
   bundle.lastSync = last;
 }
 
@@ -47,6 +56,8 @@ export async function buildDomainBundle(domainId: string): Promise<DomainLiveBun
 
   const snaps = await readLatestSnapshots(domainId);
   attach(bundle, snaps);
+  const site = await getManagedSite(domainId);
+  if (site && bundle.datasets.competitors) bundle.datasets.competitors.data = bundle.datasets.competitors.data.filter((item) => normalizedHost(item.host) !== normalizedHost(site.host));
 
   // Visibility history accumulates one point per sync day.
   const visHistory = await readSnapshotHistory(domainId, "visibility_point");
@@ -81,16 +92,20 @@ export async function buildAggregateBundle(siteSlugs?: string[]): Promise<Domain
   const bundles: DomainLiveBundle[] = [];
   for (const d of sites) {
     const snaps = map.get(d.id);
-    if (!snaps || snaps.length === 0) continue;
+
     const bundle: DomainLiveBundle = { domainId: d.id, lastSync: null, datasets: {} };
-    attach(bundle, snaps);
+    attach(bundle, snaps ?? []);
+    if (bundle.datasets.competitors) bundle.datasets.competitors.data = bundle.datasets.competitors.data.filter((item) => normalizedHost(item.host) !== normalizedHost(d.host));
     bundles.push(bundle);
   }
   return aggregateBundles(bundles);
 }
 
-function headlineFrom(domainId: string, snaps: StoredSnapshot[], ga4Mapped = false): DomainHeadline {
+function headlineFrom(domainId: string, snaps: StoredSnapshot[], ga4Mapped = false, days = 28, end?: string): DomainHeadline {
   const by = new Map(snaps.map((s) => [s.dataset, s]));
+  const bundle: DomainLiveBundle = { domainId, lastSync: null, datasets: {} };
+  attach(bundle, snaps);
+  const period = searchPeriod(bundle, days, end);
   const gsc = by.get("gsc_totals")?.payload as GscTotals | undefined;
   const ga4 = by.get("ga4_overview")?.payload as Ga4Overview | undefined;
   const onpage = by.get("onpage")?.payload as OnPageResult | undefined;
@@ -110,6 +125,7 @@ function headlineFrom(domainId: string, snaps: StoredSnapshot[], ga4Mapped = fal
   const visibility = visPoint?.value ?? null;
   return {
     domainId,
+    searchPeriod: { start: period.start, end: period.end, availableDays: period.availableDays, clicks: period.total?.clicks ?? null, impressions: period.total?.impressions ?? null, position: period.total?.position ?? null, clickChange: period.clickChange },
     lastSync: last,
     clicks28d: gsc?.clicks ?? null,
     impressions28d: gsc?.impressions ?? null,
@@ -136,8 +152,15 @@ function headlineFrom(domainId: string, snaps: StoredSnapshot[], ga4Mapped = fal
   };
 }
 
-export async function buildPortfolio(siteSlugs?: string[]): Promise<PortfolioLive> {
-  if (process.env.QA_SYNTHETIC === "true") return qaPortfolio(siteSlugs);
+export async function buildPortfolio(siteSlugs?: string[], days = 28, end?: string): Promise<PortfolioLive> {
+  if (process.env.QA_SYNTHETIC === "true") {
+    const portfolio = qaPortfolio(siteSlugs);
+    for (const site of portfolio.domains) {
+      const period = searchPeriod(qaDomainBundle(site.domainId), days, end);
+      site.searchPeriod = { start: period.start, end: period.end, availableDays: period.availableDays, clicks: period.total?.clicks ?? null, impressions: period.total?.impressions ?? null, position: period.total?.position ?? null, clickChange: period.clickChange };
+    }
+    return portfolio;
+  }
   const allSites = await listManagedSites();
   const allowed = siteSlugs ? new Set(siteSlugs) : null;
   const sites = allowed ? allSites.filter((site) => allowed.has(site.id)) : allSites;
@@ -159,7 +182,7 @@ export async function buildPortfolio(siteSlugs?: string[]): Promise<PortfolioLiv
   if (!hasDatabase()) return empty;
 
   const map = await readLatestForDomains(sites.map((d) => d.id));
-  const domains = sites.map((d) => headlineFrom(d.id, map.get(d.id) ?? [], Boolean(d.ga4PropertyId)));
+  const domains = sites.map((d) => headlineFrom(d.id, map.get(d.id) ?? [], Boolean(d.ga4PropertyId), days, end));
 
   const synced = domains.filter((d) => d.lastSync != null);
   const healths = domains.map((d) => d.health).filter((h): h is number => h != null);

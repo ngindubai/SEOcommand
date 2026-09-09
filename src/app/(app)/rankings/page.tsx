@@ -19,6 +19,7 @@ import { AreaTrend, BarSeries } from "@/components/charts/charts";
 import { useDomain, useResolvedDomain } from "@/components/shell/domain-context";
 import { useScopedLive } from "@/lib/use-live";
 import { compactNumber, fullNumber } from "@/lib/format";
+import { searchPeriod } from "@/lib/reporting";
 import { formatDate } from "@/lib/dates";
 import { cn } from "@/lib/cn";
 import type { GscMover, RankSnapshot } from "@/lib/types";
@@ -123,7 +124,8 @@ export default function RankingsPage() {
   const snapshots = ds?.rank_snapshots?.data ?? null;
   const buckets = ds?.position_buckets?.data ?? null;
   const visibility = ds?.visibility_series?.data ?? null;
-  const gscTotals = ds?.gsc_totals?.data ?? null;
+  const gscPeriod = searchPeriod(bundle, 28);
+  const gscTotals = gscPeriod.total;
   const striking = ds?.striking_distance?.data ?? null;
   const movers = ds?.gsc_movers?.data ?? null;
 
@@ -142,8 +144,8 @@ export default function RankingsPage() {
     const avgPosition = snaps.reduce((sum, s) => sum + s.position, 0) / snaps.length;
     return {
       avgPosition,
-      top3: snaps.filter((s) => s.position <= 3).length,
-      top10: snaps.filter((s) => s.position <= 10).length,
+      top3: snaps.filter((s) => s.position > 0 && s.position <= 3).length,
+      top10: snaps.filter((s) => s.position > 0 && s.position <= 10).length,
     };
   }, [bundle]);
 
@@ -283,7 +285,7 @@ export default function RankingsPage() {
       {/* KPI row */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         <KpiCard
-          label="Tracked keywords"
+          label="Discovered ranking keywords"
           value={keywords ? fullNumber(keywords.length) : "—"}
           hint="DataForSEO ranked keywords"
         />
@@ -305,8 +307,8 @@ export default function RankingsPage() {
         />
         <KpiCard
           label="GSC avg position"
-          value={gscTotals ? gscTotals.position.toFixed(1) : "—"}
-          hint="Measured, last 28 days"
+          value={gscTotals?.position != null ? gscTotals.position.toFixed(1) : "—"}
+          hint={`Saved 28 days through ${gscPeriod.end ?? "an unavailable date"}`}
         />
       </div>
 

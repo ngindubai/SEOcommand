@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { hasDatabase } from "@/sync/store";
 import { getManagedSite } from "@/platform/site-store";
-import { exploreCompetitor, recentCompetitorExplorations } from "@/platform/competitive-intelligence";
+import { cleanCompetitorHost, exploreCompetitor, recentCompetitorExplorations } from "@/platform/competitive-intelligence";
 import { BudgetExceededError, DailyLimitError } from "@/providers/dataforseo/errors";
 import { qaCompetitorExplorer } from "@/data/qa-fixtures";
 import { canAccessSite, hasPermission } from "@/platform/access";
@@ -25,9 +25,13 @@ const ExploreSchema = z.object({ siteSlug: z.string().min(1), targetHost: z.stri
 export async function POST(request: Request) {
   const parsed = ExploreSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Enter a website and competitor domain." }, { status: 400 });
-  if (!(await getManagedSite(parsed.data.siteSlug))) return NextResponse.json({ error: "Website not found." }, { status: 404 });
+  const site = await getManagedSite(parsed.data.siteSlug);
+  if (!site) return NextResponse.json({ error: "Website not found." }, { status: 404 });
   if (!await canAccessSite(request, parsed.data.siteSlug)) return NextResponse.json({ error: "Website access required." }, { status: 403 });
   if (!await hasPermission(request, "run_scans", parsed.data.siteSlug)) return NextResponse.json({ error: "Run-scan permission required for this website." }, { status: 403 });
+  try {
+    if (cleanCompetitorHost(parsed.data.targetHost) === cleanCompetitorHost(site.host)) return NextResponse.json({ error: "This is your selected website. Enter a different competitor domain." }, { status: 400 });
+  } catch { return NextResponse.json({ error: "Enter a valid competitor domain." }, { status: 400 }); }
   if (process.env.QA_SYNTHETIC === "true") return NextResponse.json({ result: qaCompetitorExplorer(parsed.data.targetHost), synthetic: true });
   if (!hasDatabase()) return NextResponse.json({ error: "Competitor explorer requires DATABASE_URL." }, { status: 503 });
   try {

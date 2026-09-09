@@ -80,11 +80,19 @@ function sumBy<T>(rows: T[], value: (r: T) => number): number {
   return rows.reduce((acc, r) => acc + (Number.isFinite(value(r)) ? value(r) : 0), 0);
 }
 
+/** Only combine totals measured over the same dates. Keep every source's coverage visible. */
+function samePeriod<T>(parts: DS<T>[]): DS<T>[] {
+  const dated = parts.filter((part) => part.provenance.rangeStart && part.provenance.rangeEnd);
+  if (!dated.length) return parts.length === 1 ? parts : [];
+  const latest = [...dated].sort((a, b) => b.provenance.rangeEnd!.localeCompare(a.provenance.rangeEnd!) || b.capturedOn.localeCompare(a.capturedOn))[0];
+  return dated.filter((part) => part.provenance.rangeStart === latest.provenance.rangeStart && part.provenance.rangeEnd === latest.provenance.rangeEnd);
+}
+
 /* ------------------------------ mergers -------------------------------- */
 
 /** Clicks/impressions sum; CTR and average position are recomputed, not averaged. */
 function mergeGscTotals(bundles: DomainLiveBundle[]): DS<GscTotals> | undefined {
-  const parts = pickDs<GscTotals>(bundles, "gsc_totals");
+  const parts = samePeriod(pickDs<GscTotals>(bundles, "gsc_totals"));
   if (parts.length === 0) return undefined;
   const rows = parts.map((p) => p.data);
   const clicks = sumBy(rows, (r) => r.clicks);
@@ -101,7 +109,7 @@ function mergeGscTotals(bundles: DomainLiveBundle[]): DS<GscTotals> | undefined 
 }
 
 function mergeGa4Overview(bundles: DomainLiveBundle[]): DS<Ga4Overview> | undefined {
-  const parts = pickDs<Ga4Overview>(bundles, "ga4_overview");
+  const parts = samePeriod(pickDs<Ga4Overview>(bundles, "ga4_overview"));
   if (parts.length === 0) return undefined;
   const rows = parts.map((p) => p.data);
   const sessions = sumBy(rows, (r) => r.sessions);
@@ -163,7 +171,10 @@ function mergeTimeseries(bundles: DomainLiveBundle[]): DS<GscTimeseriesPoint[]> 
       ctr: a.impressions ? Math.round((a.clicks / a.impressions) * 10000) / 100 : 0,
       position: a.impressions ? Math.round((a.weighted / a.impressions) * 10) / 10 : 0,
     }));
-  return envelope(parts, data);
+  return { ...envelope(parts, data), coverage: bundles.map((bundle) => {
+    const dates = (bundle.datasets.gsc_timeseries?.data ?? []).map((row) => row.date).sort();
+    return { domainId: bundle.domainId, start: dates[0] ?? null, end: dates.at(-1) ?? null };
+  }) };
 }
 
 /** Visibility is an index, so the portfolio value is the mean per date. */
@@ -229,7 +240,7 @@ function mergeOnPage(bundles: DomainLiveBundle[]): DS<OnPageResult> | undefined 
     ? {
         ...runs[0]!,
         id: "portfolio-crawl",
-        pagesCrawled: sumBy(runs, (r) => r.pagesCrawled),
+        pagesCrawled: runs.every((r) => r.pagesCrawled != null) ? sumBy(runs, (r) => r.pagesCrawled ?? 0) : null,
         healthScore,
         newIssues: sumBy(runs, (r) => r.newIssues),
         resolvedIssues: sumBy(runs, (r) => r.resolvedIssues),
@@ -329,7 +340,7 @@ export function aggregateBundles(bundles: DomainLiveBundle[]): DomainLiveBundle 
   const dashboard = mergeDashboardData(dashboardParts.map((p) => p.data));
   if (dashboard) d.ga4_dashboard = envelope(dashboardParts.filter((p) => p.data.endDate === dashboard.endDate && p.data.startDate === dashboard.startDate && p.data.breakdownStartDate === dashboard.breakdownStartDate), dashboard);
   d.position_buckets = mergePositionBuckets(withData);
-  d.gsc_timeseries = mergeTimeseries(withData);
+  d.gsc_timeseries = mergeTimeseries(bundles);
   d.visibility_series = mergeVisibility(withData);
   d.onpage = mergeOnPage(withData);
   d.share_of_market = mergeShareOfMarket(withData);

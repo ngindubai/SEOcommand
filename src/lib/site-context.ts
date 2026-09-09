@@ -61,11 +61,38 @@ export function hrefWithScope(href: string, scope: string): string {
   if (url.pathname === "/sites/new" || url.searchParams.get("workspace") === "global") return href;
   if (scope === "portfolio") return href;
   if (scope.startsWith("group:")) {
-    if (!["/portfolio", "/action-centre"].includes(url.pathname)) return href;
+    if (!["/portfolio", "/action-centre", "/work", "/outcomes", "/notifications"].includes(url.pathname)) return href;
     url.searchParams.set("scope", scope);
   } else {
-    if (!requiresSiteContext(url.pathname) && !["/portfolio", "/research", "/reports", "/action-centre", "/ai-visibility"].includes(url.pathname)) return href;
+    if (!requiresSiteContext(url.pathname) && !["/portfolio", "/research", "/reports", "/action-centre", "/ai-visibility", "/work", "/outcomes", "/notifications"].includes(url.pathname)) return href;
     url.searchParams.set("site", scope);
   }
   return `${url.pathname}${url.search}${url.hash}`;
+}
+
+/** A deliberate website switch preserves the tool, but clears record-specific links. */
+export function switchScopeHref(pathname: string, params: URLSearchParams, scope: string): string {
+  const next = new URLSearchParams(params);
+  for (const key of ["site", "scope", "domain", "item", "evidence", "mapping", "issue", "page"]) next.delete(key);
+  const singleSite = scope !== "portfolio" && !scope.startsWith("group:");
+  let path = pathname;
+  if (/^\/sites\/(?!new)[^/]+/.test(path)) {
+    path = singleSite && path.endsWith("/settings") ? `/sites/${encodeURIComponent(scope)}/settings` : "/portfolio";
+  }
+  if (!singleSite && requiresSiteContext(path)) path = "/portfolio";
+  if (singleSite && !path.startsWith("/sites/")) next.set("site", scope);
+  else if (!singleSite) next.set("scope", scope);
+  return `${path}${next.size ? `?${next}` : ""}`;
+}
+
+export function scopedSiteIds(scope: string, sites: { id: string }[], groups: { id: string; parentId: string | null; siteSlugs: string[] }[]): Set<string> {
+  if (scope === "portfolio") return new Set(sites.map((site) => site.id));
+  if (!scope.startsWith("group:")) return new Set([scope]);
+  const included = new Set([scope.slice(6)]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const group of groups) if (group.parentId && included.has(group.parentId) && !included.has(group.id)) { included.add(group.id); changed = true; }
+  }
+  return new Set(groups.filter((group) => included.has(group.id)).flatMap((group) => group.siteSlugs));
 }

@@ -145,6 +145,11 @@ export async function PATCH(request: Request) {
   if (!await hasPermission(request, "run_scans", job.siteSlug)) return NextResponse.json({ error: "Run-scan permission required for this website." }, { status: 403 });
   if (parsed.data.action === "cancel" && !["queued", "running"].includes(job.status)) return NextResponse.json({ error: "Only active scans can be cancelled." }, { status: 409 });
   if (parsed.data.action === "retry" && !["failed", "cancelled"].includes(job.status)) return NextResponse.json({ error: "Only failed or cancelled scans can be retried." }, { status: 409 });
+  if (parsed.data.action === "retry") {
+    const site = await getManagedSite(job.siteSlug);
+    const modules = (Array.isArray(job.progress.modules) ? job.progress.modules : FULL_SCAN_MODULES).filter((item): item is ScanModule => FULL_SCAN_MODULES.includes(item as ScanModule));
+    if (estimateScanCost(modules).paidModules.length && site?.spendApproval !== "approved") return NextResponse.json({ error: "Approve this website’s spending limit before retrying paid tools." }, { status: 409 });
+  }
   const [updated] = await db().update(schema.platformJobs).set(parsed.data.action === "retry"
     ? { status: "queued", runAfter: new Date(), startedAt: null, completedAt: null, lastError: null, progress: { ...job.progress, phase: "queued", completed: [] } }
     : { status: "cancelled", completedAt: new Date(), progress: { ...job.progress, phase: "cancelled" } }

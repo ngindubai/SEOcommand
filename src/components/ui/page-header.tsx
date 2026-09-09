@@ -33,14 +33,14 @@ export function PageHeader({
   return (
     <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
       <div>
-        {moduleStyle && <div className="mb-2 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.15em] text-muted"><span className="h-2 w-2 rounded-full" style={{ background: moduleStyle.color }} />{moduleStyle.label}</div>}
-        <div className="flex items-center gap-2.5">
+        {moduleStyle && <div className="mb-2 flex items-center gap-2 text-[12px] font-bold uppercase tracking-[0.15em] text-muted"><span className="h-2 w-2 rounded-full" style={{ background: moduleStyle.color }} />{moduleStyle.label}</div>}
+        <div className="flex flex-wrap items-center gap-2.5">
           <h1 className="text-balance text-2xl font-extrabold tracking-[-0.035em] text-ink sm:text-[28px]">{title}</h1>
           {lastSync !== undefined && <SyncBadge lastSync={lastSync} loading={loading} />}
         </div>
         {description && <p className="mt-1.5 max-w-3xl text-sm leading-6 text-muted">{description}</p>}
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }

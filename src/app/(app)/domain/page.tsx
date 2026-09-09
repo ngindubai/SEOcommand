@@ -166,7 +166,7 @@ export default function DomainOverviewPage() {
     return (
       <div className="animate-in space-y-5">
         <PageHeader
-          title={`${domain.name} — Domain overview`}
+          title={`${domain.name} — Source snapshots`}
           description={`Live SEO snapshot for ${domain.host}.`}
           lastSync={null}
         />
@@ -179,7 +179,7 @@ export default function DomainOverviewPage() {
     return (
       <div className="animate-in space-y-5">
         <PageHeader
-          title={`${domain.name} — Domain overview`}
+          title={`${domain.name} — Source snapshots`}
           description={`Live SEO snapshot for ${domain.host}.`}
           lastSync={null}
           loading
@@ -207,7 +207,7 @@ export default function DomainOverviewPage() {
     return (
       <div className="animate-in space-y-5">
         <PageHeader
-          title={`${domain.name} — Domain overview`}
+          title={`${domain.name} — Source snapshots`}
           description={`Live SEO snapshot for ${domain.host}.`}
           lastSync={null}
           loading={loading}
@@ -223,7 +223,7 @@ export default function DomainOverviewPage() {
   return (
     <div className="animate-in space-y-5">
       <PageHeader
-        title={`${domain.name} — Domain overview`}
+        title={`${domain.name} — Source snapshots`}
         description={`Live SEO snapshot for ${domain.host} — measured Search Console, GA4 and crawl data.`}
         actions={<RefreshButtons />}
         lastSync={bundle.lastSync ?? null}
@@ -454,34 +454,33 @@ export default function DomainOverviewPage() {
           {som && (
             <Card className="p-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-ink">Share of market</h3>
+                <h3 className="text-sm font-semibold text-ink">Demand benchmark comparison</h3>
                 <ModuleLink href="/rankings" label="Rankings" />
               </div>
               <div className="mt-3 text-3xl font-semibold text-ink tnum">
                 {percent(som.shareOfAvailableClicksPct)}
               </div>
-              <p className="mt-0.5 text-2xs text-muted">of available clicks captured</p>
+              <p className="mt-0.5 text-2xs text-muted">ratio to estimated clicks in the researched keyword sample</p>
               <dl className="mt-3 space-y-1.5 text-xs">
                 <div className="flex items-center justify-between">
                   <dt className="text-muted">Measured clicks ({som.windowDays}d)</dt>
                   <dd className="font-medium text-ink tnum">{fullNumber(som.measuredClicks)}</dd>
                 </div>
                 <div className="flex items-center justify-between">
-                  <dt className="text-muted">Available clicks in window</dt>
+                  <dt className="text-muted">Estimated sample clicks</dt>
                   <dd className="font-medium text-ink tnum">
                     {fullNumber(som.availableClicksInWindow)}
                   </dd>
                 </div>
                 <div className="flex items-center justify-between">
-                  <dt className="text-muted">Impression share of demand</dt>
+                  <dt className="text-muted">Impressions / sample demand</dt>
                   <dd className="font-medium text-ink tnum">
                     {percent(som.impressionShareOfDemandPct)}
                   </dd>
                 </div>
               </dl>
               <p className="mt-3 rounded-md border border-dashed border-border bg-workspace/50 px-2.5 py-2 text-2xs text-muted">
-                Measured GSC clicks over the researched keyword pool ({fullNumber(som.keywordCount)}{" "}
-                keywords) — not a modelled estimate.
+                This compares all website Search Console activity with an estimated sample of {fullNumber(som.keywordCount)} keywords. The scopes differ, so this ratio can exceed 100% and is not market share. Benchmark date: {som.baselined ?? "not recorded"}.
               </p>
             </Card>
           )}

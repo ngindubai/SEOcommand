@@ -389,8 +389,9 @@ export function normalizeOnPageHealth(
   crawlRun: CrawlRun | null;
   issues: TechnicalIssue[];
   healthScore: number;
+  methodologyVersion: number;
 } {
-  if (!summary) return { breakdown: [], crawlRun: null, issues: [], healthScore: 0 };
+  if (!summary) return { breakdown: [], crawlRun: null, issues: [], healthScore: 0, methodologyVersion: 2 };
   const pm = summary?.page_metrics ?? {};
   const checks: Row = pm?.checks ?? {};
   const onpageScore = num(pm?.onpage_score, num(summary?.onpage_score));
@@ -417,31 +418,20 @@ export function normalizeOnPageHealth(
     }),
   );
 
-  const catIssues = (cat: string) =>
-    issues.filter((i) => i.category === cat).reduce((s, i) => s + i.affectedPages, 0);
-
-  const breakdown: HealthBreakdown[] = [
-    { category: "Crawlability", weight: 0.15, score: onpageScore, issues: catIssues("Crawlability") },
-    { category: "Indexability", weight: 0.15, score: onpageScore, issues: catIssues("Indexability") },
-    { category: "Metadata", weight: 0.1, score: onpageScore, issues: catIssues("Metadata") },
-    { category: "Internal linking", weight: 0.1, score: onpageScore, issues: catIssues("Internal linking") },
-    { category: "Canonicalisation", weight: 0.1, score: onpageScore, issues: catIssues("Canonicalisation") },
-    { category: "Structured data", weight: 0.08, score: onpageScore, issues: 0 },
-    { category: "HTTPS & security", weight: 0.07, score: onpageScore, issues: catIssues("HTTPS & security") },
-    { category: "Content quality", weight: 0.05, score: onpageScore, issues: catIssues("Content") },
-  ];
+  // Category scores are not supplied independently by this provider.
+  const breakdown: HealthBreakdown[] = [];
 
   const crawlRun: CrawlRun = {
     id: "dfs-crawl-latest",
     domainId: "",
     startedAt: str(summary?.crawl_start_time).slice(0, 10),
     completedAt: str(summary?.crawl_end_time).slice(0, 10),
-    pagesCrawled: num(summary?.pages_crawled ?? pm?.links_internal),
+    pagesCrawled: summary?.pages_crawled == null ? null : num(summary.pages_crawled),
     healthScore: Math.round(onpageScore),
     newIssues: issues.length,
     resolvedIssues: 0,
     status: summary?.crawl_progress === "finished" ? "completed" : "running",
   };
 
-  return { breakdown, crawlRun, issues, healthScore: Math.round(onpageScore) };
+  return { breakdown, crawlRun, issues, healthScore: Math.round(onpageScore), methodologyVersion: 2 };
 }

@@ -3,16 +3,32 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db, schema } from "@/db";
 import { hasDatabase } from "@/sync/store";
-import { notificationInbox, unreadNotificationCount } from "@/platform/notifications";
+import { readIncidentHistory, readNotificationGroups } from "@/platform/notifications";
 import { accessibleSiteSlugs, canAccessSite, hasPermission } from "@/platform/access";
+import { resolveGroupSiteSlugs } from "@/platform/site-store";
 import { QA_SITES } from "@/data/qa-fixtures";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const limit = Number(new URL(request.url).searchParams.get("limit")) || 100;
-  const accessible = await accessibleSiteSlugs(request);
+  const params = new URL(request.url).searchParams;
+  const number = (key: string, fallback: number) => { const value = Number(params.get(key) ?? fallback); return Number.isFinite(value) ? Math.trunc(value) : fallback; };
+  const limit = Math.min(100, Math.max(1, number("limit", 20)));
+  const offset = Math.max(0, number("offset", 0));
+  const scope = params.get("site") ?? params.get("scope") ?? "portfolio";
+  const allowed = await accessibleSiteSlugs(request);
+  const requested = scope === "portfolio" ? null : scope.startsWith("group:") ? await resolveGroupSiteSlugs(scope.slice(6)) : [scope];
+  const accessible = requested ? requested.filter((site) => allowed === null || allowed.includes(site)) : allowed;
+  function respond<T extends { status: string; title: string; detail: string | null; readAt: Date | string | null; severity: string }>(all: T[]) {
+    const query = params.get("q")?.trim().toLowerCase() ?? "";
+    const severity = params.get("severity");
+    const matching = all.filter((item) => (!query || `${item.title} ${item.detail ?? ""}`.toLowerCase().includes(query)) && (!severity || item.severity === severity));
+    const counts = { open: matching.filter((item) => item.status === "open").length, snoozed: matching.filter((item) => item.status === "snoozed").length, history: matching.filter((item) => ["resolved", "dismissed"].includes(item.status)).length };
+    const status = params.get("status");
+    const filtered = matching.filter((item) => !status || (status === "history" ? ["resolved", "dismissed"].includes(item.status) : item.status === status));
+    return NextResponse.json({ items: filtered.slice(offset, offset + limit), unread: all.filter((item) => !item.readAt && item.status === "open").length, counts, total: filtered.length, offset, limit });
+  }
   if (process.env.QA_SYNTHETIC === "true") {
     const sites = accessible === null ? QA_SITES : QA_SITES.filter((site) => accessible.includes(site.id));
     const items = sites.map((site) => {
@@ -32,10 +48,14 @@ export async function GET(request: Request) {
       createdAt: new Date(Date.UTC(2026, 7, 26, 8, index)),
       };
     });
-    return NextResponse.json({ items: items.slice(0, limit), unread: items.filter((item) => !item.readAt && item.status === "open").length });
+    return respond(items);
   }
-  const [items, unread] = await Promise.all([notificationInbox(limit, accessible), unreadNotificationCount(accessible)]);
-  return NextResponse.json({ items, unread });
+  const historyId = params.get("historyId");
+  if (historyId) {
+    if (!z.string().uuid().safeParse(historyId).success) return NextResponse.json({ error: "Invalid incident." }, { status: 400 });
+    return NextResponse.json(await readIncidentHistory(historyId, accessible, offset, limit));
+  }
+  return respond(await readNotificationGroups(accessible));
 }
 
 const PatchSchema = z.object({

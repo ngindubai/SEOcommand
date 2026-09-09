@@ -17,6 +17,7 @@ function rows(value: unknown): Row[] {
 }
 
 function number(value: unknown): number | null {
+  if (value == null || value === "" || typeof value === "boolean") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -194,6 +195,7 @@ export async function persistScheduledCompetitorSnapshot(input: {
 export async function exploreCompetitor(siteSlug: string, targetInput: string): Promise<CompetitorExplorerResult> {
   const site = await getManagedSite(siteSlug);
   if (!site) throw new Error("Website not found.");
+  if (cleanCompetitorHost(targetInput) === cleanCompetitorHost(site.host)) throw new Error("This is your selected website. Enter a different competitor domain.");
   const location = locationForSite(site);
   const collected = await collectDomainResearch({ targetHost: targetInput, locationCode: location.location_code, languageCode: location.language_code, domainSlug: siteSlug });
   const { costUsd: _costUsd, ...result } = collected;

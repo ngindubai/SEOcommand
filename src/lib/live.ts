@@ -63,12 +63,14 @@ export type DatasetKey = (typeof DATASETS)[number];
 
 export interface DS<T> {
   includedDomains?: number;
+  coverage?: { domainId: string; start: string | null; end: string | null }[];
   data: T;
   capturedOn: string;
   provenance: Provenance;
 }
 
 export interface OnPageResult {
+  methodologyVersion?: number;
   breakdown: HealthBreakdown[];
   crawlRun: CrawlRun | null;
   issues: TechnicalIssue[];
@@ -132,6 +134,7 @@ export interface DomainLiveBundle {
 
 /** Headline aggregates for the portfolio rail + portfolio page. */
 export interface DomainHeadline {
+  searchPeriod?: { start: string | null; end: string | null; availableDays: number; clicks: number | null; impressions: number | null; position: number | null; clickChange: number | null };
   domainId: string;
   lastSync: string | null;
   clicks28d: number | null;

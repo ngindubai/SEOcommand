@@ -15,7 +15,11 @@ export async function GET(request: Request) {
     const slugs = accessible === null
       ? requested ?? undefined
       : (requested ?? accessible).filter((slug) => accessible.includes(slug));
-    const portfolio = await buildPortfolio(slugs);
+    const params = new URL(request.url).searchParams;
+    const days = [7, 28, 90].includes(Number(params.get("days"))) ? Number(params.get("days")) : 28;
+    const end = params.get("end");
+    const validEnd = end && /^\d{4}-\d{2}-\d{2}$/.test(end) && Number.isFinite(Date.parse(end)) ? end : undefined;
+    const portfolio = await buildPortfolio(slugs, days, validEnd);
     return NextResponse.json(portfolio);
   } catch (err) {
     return NextResponse.json(

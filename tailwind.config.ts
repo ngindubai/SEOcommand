@@ -42,7 +42,7 @@ const config: Config = {
         sans: ["var(--font-manrope)", "Manrope", "system-ui", "sans-serif"],
       },
       fontSize: {
-        "2xs": ["11px", { lineHeight: "14px" }],
+        "2xs": ["12px", { lineHeight: "18px" }],
       },
       boxShadow: {
         card: "0 0 0 2px rgb(128 128 128 / 0.025), 0 1px 2px rgb(0 0 0 / 0.025)",

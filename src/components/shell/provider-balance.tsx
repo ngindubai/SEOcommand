@@ -63,7 +63,7 @@ export function ProviderBalance() {
         tone === "healthy" ? "bg-success/10 text-success" : tone === "warning" ? "bg-warning/10 text-warning" : tone === "critical" ? "bg-critical/10 text-critical" : "bg-card text-muted",
       )}><WalletCards className="h-3.5 w-3.5" /></span>
       <span className="hidden leading-tight xl:block">
-        <span className="block text-[9px] font-bold uppercase tracking-[0.12em] text-muted">DataForSEO</span>
+        <span className="block text-[12px] font-bold uppercase tracking-[0.12em] text-muted">DataForSEO</span>
         <span className="block text-xs font-extrabold text-ink tnum">{state.status === "ready" ? `${formatter.format(state.balanceUsd)}${depleted ? " · Top up required" : ""}` : state.status === "loading" ? "Loading…" : "Balance unavailable"}</span>
       </span>
       <span className="text-xs font-extrabold text-ink tnum xl:hidden">{state.status === "ready" ? `${formatter.format(state.balanceUsd)}${depleted ? " · Top up" : ""}` : "—"}</span>

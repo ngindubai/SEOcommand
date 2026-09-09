@@ -4,12 +4,14 @@ import { useMemo, useState } from "react";
 import { ArrowUpDown, ArrowUp, ArrowDown, Search, Download } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button } from "./primitives";
+import { cellText, csvCell } from "@/lib/csv";
 
 export interface Column<T> {
   key: string;
   header: string;
   align?: "left" | "right" | "center";
   sortValue?: (row: T) => number | string;
+  exportValue?: (row: T) => number | string | null;
   render: (row: T) => React.ReactNode;
   width?: string;
 }
@@ -78,13 +80,13 @@ export function DataTable<T>({
   }
 
   function exportCsv() {
-    const header = columns.map((c) => `"${c.header}"`).join(",");
+    const header = columns.map((c) => csvCell(c.header)).join(",");
     const body = filtered
       .map((r) =>
         columns
           .map((c) => {
-            const v = c.sortValue ? c.sortValue(r) : "";
-            return `"${String(v).replace(/"/g, '""')}"`;
+            const v = c.exportValue ? c.exportValue(r) : cellText(c.render(r)) || c.sortValue?.(r) || "";
+            return csvCell(v);
           })
           .join(","),
       )
@@ -129,13 +131,15 @@ export function DataTable<T>({
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-md border border-border">
+      <div className="overflow-x-auto rounded-md border border-border" tabIndex={0} role="region" aria-label="Data table; scroll horizontally for more columns">
         <table className="w-full min-w-[640px] border-collapse text-sm">
           <thead className="sticky top-0 z-10">
             <tr className="border-b border-border bg-workspace/70">
               {columns.map((c) => (
                 <th
                   key={c.key}
+                  scope="col"
+                  aria-sort={sortKey === c.key ? sortDir === "asc" ? "ascending" : "descending" : c.sortValue ? "none" : undefined}
                   style={{ width: c.width }}
                   className={cn(
                     "px-3 py-2.5 text-2xs font-semibold uppercase tracking-wide text-muted",
@@ -146,7 +150,7 @@ export function DataTable<T>({
                     <button
                       onClick={() => toggleSort(c.key)}
                       className={cn(
-                        "inline-flex items-center gap-1 hover:text-ink",
+                        "inline-flex min-h-8 items-center gap-1 hover:text-ink",
                         c.align === "right" && "flex-row-reverse",
                       )}
                     >
@@ -166,34 +170,37 @@ export function DataTable<T>({
                   )}
                 </th>
               ))}
+              {onRowClick && <th scope="col" className="px-3 py-2 text-right text-xs text-muted">Details</th>}
             </tr>
           </thead>
           <tbody>
             {pageRows.map((row, i) => (
               <tr
                 key={rowKey?.(row) ?? i}
-                onClick={() => onRowClick?.(row)}
+                onClick={(event) => { if (!(event.target as HTMLElement).closest("a,button,input,select,textarea")) onRowClick?.(row); }}
                 className={cn(
                   "border-b border-border/70 last:border-0",
                   onRowClick && "cursor-pointer hover:bg-workspace/60",
                 )}
               >
-                {columns.map((c) => (
+                {columns.map((c, columnIndex) => (
                   <td
                     key={c.key}
                     className={cn(
                       "px-3 py-2.5 text-ink",
+                      columnIndex === 0 && "sticky left-0 z-10 bg-card shadow-[1px_0_0_rgb(var(--border))]",
                       c.align === "right" ? "text-right tabular-nums tnum" : c.align === "center" ? "text-center" : "text-left",
                     )}
                   >
                     {c.render(row)}
                   </td>
                 ))}
+                {onRowClick && <td className="px-3 py-2 text-right"><button className="min-h-9 rounded-md border border-border px-3 text-xs font-semibold text-purple hover:bg-workspace" aria-label={`Open details for ${cellText(columns[0]?.render(row)) || `row ${clampedPage * pageSize + i + 1}`}`} onClick={() => onRowClick(row)}>Open</button></td>}
               </tr>
             ))}
             {pageRows.length === 0 && (
               <tr>
-                <td colSpan={columns.length} className="px-3 py-10 text-center text-xs text-muted">
+                <td colSpan={columns.length + (onRowClick ? 1 : 0)} className="px-3 py-10 text-center text-xs text-muted">
                   {emptyLabel}
                 </td>
               </tr>

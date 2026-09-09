@@ -85,7 +85,7 @@ export function PortfolioConstellation({ sites, groups, headlines }: { sites: Do
           <div className="flex items-center gap-2"><Layers3 className="h-4 w-4 text-purple" /><h2 className="text-sm font-extrabold text-ink">Portfolio constellation</h2></div>
           <p className="mt-1 text-2xs text-muted">Select a group or website to focus every tool. Node colour reflects current health.</p>
         </div>
-        <div className="absolute right-5 top-5 z-10 flex items-center gap-3 rounded-md border border-border bg-card/90 px-3 py-2 text-[10px] font-semibold text-muted shadow-sm">
+        <div className="absolute right-5 top-5 z-10 flex items-center gap-3 rounded-md border border-border bg-card/90 px-3 py-2 text-[12px] font-semibold text-muted shadow-sm">
           <Legend color="#16A879" label="Healthy" /><Legend color="#F2B544" label="Watch" /><Legend color="#FF5C62" label="Critical" />
         </div>
         <svg className="absolute inset-0 h-full w-full" aria-hidden>
@@ -105,7 +105,7 @@ export function PortfolioConstellation({ sites, groups, headlines }: { sites: Do
           >
             <div className="flex items-center gap-2">
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md" style={{ background: `${node.color}18`, color: node.color }}>{node.kind === "root" ? <Layers3 className="h-4 w-4" /> : node.kind === "group" ? <Folder className="h-4 w-4" /> : <Globe2 className="h-4 w-4" />}</span>
-              <span className="min-w-0"><span className="block truncate text-xs font-bold text-ink">{node.label}</span><span className="block truncate text-[10px] text-muted">{node.subtitle}</span></span>
+              <span className="min-w-0"><span className="block truncate text-xs font-bold text-ink">{node.label}</span><span className="block truncate text-[12px] text-muted">{node.subtitle}</span></span>
             </div>
             {node.kind === "site" && <span className="mt-2 block h-1.5 overflow-hidden rounded-full bg-workspace"><span className="block h-full rounded-full" style={{ width: `${Math.max(4, node.health ?? 4)}%`, background: node.color }} /></span>}
           </button>;

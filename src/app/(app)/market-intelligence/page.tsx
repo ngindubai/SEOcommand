@@ -1,4 +1,5 @@
 "use client";
+import { Paginated } from "@/components/ui/paginated";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
@@ -225,7 +226,7 @@ export default function MarketIntelligencePage() {
               </button>
             ))}
           </div>
-          <div className="rounded-md border border-border bg-workspace/40 px-3 py-2 text-[10px] text-muted">
+          <div className="rounded-md border border-border bg-workspace/40 px-3 py-2 text-[12px] text-muted">
             <ShieldCheck className="mr-1 inline h-3.5 w-3.5 text-success" />
             {data.provenance.source} ·{" "}
             {data.provenance.paidRefresh ? "Paid refresh" : "No paid refresh"} ·{" "}
@@ -234,7 +235,7 @@ export default function MarketIntelligencePage() {
               : "No stored observation in this range"}
           </div>
           <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3">
-            <span className="mr-1 text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
+            <span className="mr-1 text-[12px] font-bold uppercase tracking-[0.12em] text-muted">
               Market slice
             </span>
             <FilterSelect
@@ -419,7 +420,7 @@ function FilterSelect({
   prefix?: string;
 }) {
   return (
-    <label className="flex items-center gap-1.5 text-[10px] font-semibold text-muted">
+    <label className="flex items-center gap-1.5 text-[12px] font-semibold text-muted">
       <span>{label}</span>
       <select
         aria-label={label}
@@ -457,6 +458,7 @@ function DataHealth({
     }
   >;
 }) {
+  const [now] = useState(() => Date.now());
   return (
     <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-6">
       {Object.entries(datasets).map(([name, item]) => (
@@ -465,7 +467,7 @@ function DataHealth({
           className="rounded-md border border-border bg-card px-3 py-2"
         >
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[10px] font-bold capitalize text-ink">
+            <span className="text-[12px] font-bold capitalize text-ink">
               {item.label ?? name}
             </span>
             <StatusBadge
@@ -481,15 +483,15 @@ function DataHealth({
               }
             />
           </div>
-          <div className="mt-1 text-[9px] text-muted">
+          <div className="mt-1 text-[12px] text-muted">
             {item.records} records
             {item.distinctDates != null && item.minimumDates != null
               ? ` · ${item.distinctDates}/${item.minimumDates} dates`
               : ` · ${item.confidence} confidence`}
           </div>
-          <div className="mt-0.5 text-[9px] text-muted">
+          <div className="mt-0.5 text-[12px] text-muted">
             {item.nextRunAt
-              ? `Next ${new Date(item.nextRunAt).toLocaleString()}`
+              ? `${Date.parse(item.nextRunAt) < now ? "Overdue since" : "Next check"} ${new Date(item.nextRunAt).toLocaleString()}`
               : item.cadence === "continuous"
                 ? "Updates after verification"
                 : item.observedAt
@@ -523,7 +525,7 @@ function Opportunities({
         sub="Ranked by evidence, demand and competitive position; execution still requires an explicit handoff"
       />
       <div className="divide-y divide-border">
-        {rows.slice(0, 50).map((row) => (
+        <Paginated label="work and opportunities">{rows.map((row) => (
           <div
             key={row.id}
             className="grid gap-3 p-4 md:grid-cols-[56px_minmax(0,1fr)_120px_auto] md:items-center"
@@ -538,7 +540,7 @@ function Opportunities({
               </div>
               <p className="mt-1 text-xs text-muted">{row.detail}</p>
             </div>
-            <div className="text-[10px] text-muted">
+            <div className="text-[12px] text-muted">
               <b className="block capitalize text-ink">
                 {row.confidence} confidence
               </b>
@@ -549,7 +551,7 @@ function Opportunities({
               Create work
             </Button>
           </div>
-        ))}
+        ))}</Paginated>
       </div>
     </Card>
   );
@@ -588,7 +590,7 @@ function Sov({ data }: { data: any }) {
                     style={{ width: `${r.share}%` }}
                   />
                 </div>
-                <div className="mt-1 text-[10px] text-muted">
+                <div className="mt-1 text-[12px] text-muted">
                   {r.share}% share
                 </div>
               </div>
@@ -696,7 +698,7 @@ function Coverage({ data, onWork }: { data: any; onWork: (r: any) => void }) {
       <div className="overflow-x-auto">
         <table className="w-full min-w-[680px] text-xs">
           <thead>
-            <tr className="bg-workspace text-left text-[10px] uppercase text-muted">
+            <tr className="bg-workspace text-left text-[12px] uppercase text-muted">
               <th className="p-3">Service</th>
               {data.markets.map((m: string) => (
                 <th key={m} className="p-3 text-center">
@@ -720,7 +722,7 @@ function Coverage({ data, onWork }: { data: any; onWork: (r: any) => void }) {
                         className={`w-full rounded-md border p-3 text-center ${c.state === "strong" ? "border-success/25 bg-success/5" : c.state === "weak" ? "border-warning/25 bg-warning/5" : "border-critical/20 bg-critical/5"}`}
                       >
                         <b className="capitalize">{c.state}</b>
-                        <div className="mt-1 text-[10px] text-muted">
+                        <div className="mt-1 text-[12px] text-muted">
                           {c.bestPosition ? `#${c.bestPosition}` : "No page"} ·
                           demand {c.demand}
                         </div>
@@ -819,13 +821,13 @@ function Builder({
           ))}
         </div>
         <div className="border-t border-border p-4">
-          <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-muted">
+          <div className="mb-2 text-[12px] font-bold uppercase tracking-[0.12em] text-muted">
             Live preview
           </div>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {widgets.map((metric) => (
               <div key={metric} className="rounded-md bg-workspace p-3">
-                <div className="text-[10px] font-semibold capitalize text-muted">
+                <div className="text-[12px] font-semibold capitalize text-muted">
                   {metric.replace(/_/g, " ")}
                 </div>
                 <div className="mt-2 text-xl font-black text-ink">
@@ -862,7 +864,7 @@ function Builder({
             <div key={d.id} className="flex items-center gap-2 p-3">
               <div className="min-w-0 flex-1">
                 <b className="text-xs text-ink">{d.name}</b>
-                <div className="mt-1 text-[10px] text-muted">
+                <div className="mt-1 text-[12px] text-muted">
                   {d.widgets.length} widgets · {d.scopeType}
                 </div>
               </div>
@@ -922,7 +924,7 @@ function Forecast({ rows }: { rows: any[] }) {
                 <p className="mt-2 text-xs leading-5 text-muted">
                   {r.assumption}
                 </p>
-                <div className="mt-1 text-[10px] text-muted">
+                <div className="mt-1 text-[12px] text-muted">
                   {r.samples} verified winning outcomes
                 </div>
               </div>
@@ -945,14 +947,14 @@ function Head({ title, sub }: { title: string; sub: string }) {
   return (
     <div className="border-b border-border p-4">
       <h3 className="text-sm font-bold text-ink">{title}</h3>
-      <p className="mt-1 text-[10px] text-muted">{sub}</p>
+      <p className="mt-1 text-[12px] text-muted">{sub}</p>
     </div>
   );
 }
 function Mini({ label, value }: { label: string; value: any }) {
   return (
     <div className="rounded-lg border border-border bg-card p-3">
-      <div className="text-[10px] font-bold uppercase text-muted">{label}</div>
+      <div className="text-[12px] font-bold uppercase text-muted">{label}</div>
       <div className="mt-2 text-xl font-black tnum">{value}</div>
     </div>
   );
@@ -969,7 +971,7 @@ function List({
   return (
     <div className="min-w-0 p-3">
       {title && (
-        <div className="mb-2 text-[10px] font-bold uppercase text-muted">
+        <div className="mb-2 text-[12px] font-bold uppercase text-muted">
           {title}
         </div>
       )}
@@ -983,7 +985,7 @@ function List({
               <div className="truncate text-xs font-semibold text-ink">
                 {r.url ?? r.sourceDomain ?? r.domain ?? r.prompt ?? r.keyword}
               </div>
-              <div className="mt-1 text-[10px] text-muted">
+              <div className="mt-1 text-[12px] text-muted">
                 {r.traffic != null ? `${r.traffic} traffic · ` : ""}
                 {r.authority != null ? `authority ${r.authority} · ` : ""}
                 {r.reason ?? r.topic ?? r.status ?? "Stored evidence"}
@@ -1004,7 +1006,7 @@ function List({
 function Scenario({ label, value }: { label: string; value: number | null }) {
   return (
     <div className="rounded-md bg-workspace p-3 text-center">
-      <div className="text-[10px] uppercase text-muted">{label}</div>
+      <div className="text-[12px] uppercase text-muted">{label}</div>
       <div className="mt-2 text-2xl font-black">
         {value == null ? "Locked" : `${value > 0 ? "+" : ""}${value}%`}
       </div>

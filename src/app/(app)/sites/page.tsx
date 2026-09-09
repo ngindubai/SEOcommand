@@ -116,7 +116,8 @@ export default function SitesPage() {
       },
       {
         key: "connections",
-        header: "Connections",
+        header: "Publishing connections",
+        exportValue: (site) => connections.filter((connection) => connection.siteSlug === site.id).map((connection) => `${connection.kind}: ${connection.status}`).join("; ") || "No publishing connection",
         render: (site) => {
           const linked = connections.filter((connection) => connection.siteSlug === site.id);
           return linked.length ? (

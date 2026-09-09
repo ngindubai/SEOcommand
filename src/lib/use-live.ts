@@ -42,7 +42,7 @@ export interface LiveState<T> {
   refresh: () => void;
 }
 
-function useJson<T>(url: string, ttlMs = TTL_MS): LiveState<T> {
+export function useJson<T>(url: string, ttlMs = TTL_MS): LiveState<T> {
   const cached = cache.get(url) as CacheEntry<T> | undefined;
   const [data, setData] = useState<T | null>(cached?.data ?? null);
   const [dataUrl, setDataUrl] = useState(url);
@@ -85,8 +85,8 @@ function useJson<T>(url: string, ttlMs = TTL_MS): LiveState<T> {
 }
 
 /** Saved alerts and workflow decisions for the selected reporting scope. */
-export function useActionQueue(scope: string): LiveState<ActionData> {
-  return useJson<ActionData>(actionQueueUrl(scope), 0);
+export function useActionQueue(scope: string, options?: { page: number; filter: string }): LiveState<ActionData> {
+  return useJson<ActionData>(options ? `/api/action-centre?scope=${encodeURIComponent(scope)}&offset=${options.page * 20}&limit=20&kind=${options.filter}` : actionQueueUrl(scope), 0);
 }
 
 /** Urgent work for the dashboard. */
@@ -101,8 +101,11 @@ export function useLiveDomain(domainId: string): LiveState<DomainLiveBundle> {
 }
 
 /** Portfolio headline aggregates. */
-export function useLivePortfolio(groupId?: string): LiveState<PortfolioLive> {
-  return useJson<PortfolioLive>(groupId ? `/api/live/portfolio?groupId=${encodeURIComponent(groupId)}` : `/api/live/portfolio`);
+export function useLivePortfolio(groupId?: string, days = 28, end?: string | null): LiveState<PortfolioLive> {
+  const params = new URLSearchParams({ days: String(days) });
+  if (groupId) params.set("groupId", groupId);
+  if (end) params.set("end", end);
+  return useJson<PortfolioLive>(`/api/live/portfolio?${params}`);
 }
 
 /**

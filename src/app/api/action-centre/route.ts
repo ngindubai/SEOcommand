@@ -1,6 +1,7 @@
-import { and, count, desc, eq, gte, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { db, schema } from "@/db";
+import { readNotificationGroups } from "@/platform/notifications";
 import { buildLearningSignals } from "@/platform/outcome-ledger";
 import { hasDatabase } from "@/sync/store";
 import { listManagedSites, resolveGroupSiteSlugs } from "@/platform/site-store";
@@ -15,8 +16,11 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   const requestedLimit = Number(params.get("limit") ?? "150");
   const limit = Math.min(Math.max(Number.isFinite(requestedLimit) ? Math.trunc(requestedLimit) : 150, 1), 250);
+  const offsetInput = Number(params.get("offset") ?? 0);
+  const offset = Number.isFinite(offsetInput) ? Math.max(0, Math.trunc(offsetInput)) : 0;
+  const kind = params.get("kind") ?? "all";
   const scope = params.get("scope") ?? "portfolio";
-  const urgentOnly = params.get("priority") === "urgent";
+  const urgentOnly = params.get("priority") === "urgent" || kind === "urgent";
   const allSites = await listManagedSites();
   const requestedSlugs = scope === "portfolio" ? allSites.map((site) => site.id)
     : scope.startsWith("group:") ? await resolveGroupSiteSlugs(scope.slice(6)) : [scope];
@@ -25,10 +29,11 @@ export async function GET(request: Request) {
   const paused = sites.filter((site) => site.lifecycleStatus === "paused").length;
 
   function respond(allItems: ActionItem[], counts: ActionData["counts"], available = true, synthetic = false) {
-    const total = urgentOnly ? counts.urgent : counts.open;
-    const items = allItems.filter((item) => !urgentOnly || isUrgentAction(item)).sort(compareActions).slice(0, limit)
+    const filtered = allItems.filter((item) => (!urgentOnly || isUrgentAction(item)) && (kind === "alerts" ? item.kind === "alert" : kind === "research" ? item.kind === "research" : kind === "recommendations" ? item.kind === "recommendation" : true));
+    const total = filtered.length;
+    const items = filtered.sort(compareActions).slice(offset, offset + limit)
       .map((item) => ({ ...item, actionUrl: actionDestination(item).href }));
-    return NextResponse.json({ items, counts, available, synthetic, meta: { returned: items.length, total, hasMore: total > items.length } } satisfies ActionData);
+    return NextResponse.json({ items, counts, available, synthetic, meta: { returned: items.length, total, hasMore: total > offset + items.length } } satisfies ActionData);
   }
 
   if (process.env.QA_SYNTHETIC === "true") {
@@ -65,10 +70,8 @@ export async function GET(request: Request) {
   }
 
   const slugs = sites.map((site) => site.id);
-  const notice = schema.portfolioNotifications;
-  const task = schema.workflowItems;
+    const task = schema.workflowItems;
   // Filter active work before limiting, so newer resolved notices cannot hide a critical alert.
-  const noticeWhere = and(inArray(notice.siteSlug, slugs), or(eq(notice.status, "open"), and(eq(notice.status, "snoozed"), lte(notice.snoozedUntil, new Date()))));
   const taskWhere = and(inArray(task.domainSlug, slugs), eq(task.decision, "approved"), or(isNull(task.status), ne(task.status, "done")));
   const mapping = schema.researchMappings;
   const researchWhere = and(inArray(mapping.siteSlug, slugs), eq(mapping.status, "mapped"));
@@ -82,25 +85,25 @@ export async function GET(request: Request) {
     ? sql<number>`greatest(0, least(100, ${task.priorityScore} + case ${sql.join(adjustments, sql` `)} else 0 end))`.mapWith(Number)
     : sql<number>`${task.priorityScore}`.mapWith(Number);
   const severityScore = { critical: 100, high: 75, medium: 45, low: 20 };
-  const noticePriority = sql`case ${notice.severity} when 'critical' then 100 when 'high' then 75 when 'medium' then 45 else 20 end`;
-  const [notices, tasks, mappedResearch, [noticeCounts], [taskCounts], [researchCounts]] = await Promise.all([
-    db().select().from(notice).where(and(noticeWhere, urgentOnly ? inArray(notice.severity, ["critical", "high"]) : undefined))
-      .orderBy(desc(noticePriority), desc(notice.createdAt), notice.id).limit(limit),
+  const [noticeGroups, tasks, mappedResearch, [taskCounts], [researchCounts]] = await Promise.all([
+    readNotificationGroups(slugs),
     db().select({ item: task, score: learnedPriority }).from(task).where(and(taskWhere, urgentOnly ? gte(learnedPriority, 75) : undefined))
-      .orderBy(desc(learnedPriority), desc(task.updatedAt), task.id).limit(limit),
+      .orderBy(desc(learnedPriority), desc(task.updatedAt), task.id),
     db().select({ mapping, evidence: schema.researchEvidence }).from(mapping)
       .innerJoin(schema.researchEvidence, eq(schema.researchEvidence.id, mapping.evidenceId))
       .where(and(researchWhere, urgentOnly ? gte(mapping.priorityScore, 75) : undefined))
-      .orderBy(desc(mapping.priorityScore), desc(mapping.updatedAt), mapping.id).limit(limit),
-    db().select({ open: count(), critical: sql<number>`count(*) filter (where ${notice.severity} = 'critical')`.mapWith(Number), urgent: sql<number>`count(*) filter (where ${notice.severity} in ('critical', 'high'))`.mapWith(Number) }).from(notice).where(noticeWhere),
+      .orderBy(desc(mapping.priorityScore), desc(mapping.updatedAt), mapping.id),
+
     db().select({ open: count(), urgent: sql<number>`count(*) filter (where ${learnedPriority} >= 75)`.mapWith(Number) }).from(task).where(taskWhere),
     db().select({ open: count(), urgent: sql<number>`count(*) filter (where ${mapping.priorityScore} >= 75)`.mapWith(Number) }).from(mapping).where(researchWhere),
   ]);
+  const notices = noticeGroups.filter((item) => item.status === "open" && item.siteSlug && slugs.includes(item.siteSlug));
+  const noticeCounts = { open: notices.length, critical: notices.filter((item) => item.severity === "critical").length, urgent: notices.filter((item) => ["critical", "high"].includes(item.severity)).length };
   const siteNames = new Map(sites.map((site) => [site.id, site.name]));
   const allItems: ActionItem[] = [
     ...notices.map((item) => ({
       id: item.id, kind: "alert" as const, siteSlug: item.siteSlug,
-      siteName: siteNames.get(item.siteSlug!) ?? item.siteSlug!, title: item.title, detail: item.detail,
+      siteName: siteNames.get(item.siteSlug!) ?? item.siteSlug!, title: item.title, detail: `${item.detail ?? ""}${item.eventCount > 1 ? ` · ${item.eventCount} related events` : ""}`,
       status: item.status, severity: item.severity, score: severityScore[item.severity], actionUrl: item.actionUrl,
       createdAt: item.createdAt.toISOString(),
     })),

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   ArrowRight,
   CheckCircle2,
@@ -32,7 +33,7 @@ const CONFIDENCE_COLOR: Record<RecConfidence, string> = {
   low: "text-muted",
 };
 
-type WorkflowStatus = "approved" | "in_progress" | "done";
+type WorkflowStatus = "approved" | "in_progress" | "shipped" | "verifying" | "done";
 
 interface WorkflowItem {
   id: string;
@@ -50,13 +51,10 @@ type WorkflowTask = WorkflowItem & { status: WorkflowStatus };
 const BOARD_COLUMNS: { status: WorkflowStatus; label: string }[] = [
   { status: "approved", label: "Approved" },
   { status: "in_progress", label: "In progress" },
-  { status: "done", label: "Done" },
+  { status: "shipped", label: "Shipped" },
+  { status: "verifying", label: "Verifying" },
+  { status: "done", label: "Verified" },
 ];
-
-const NEXT_STATUS: Partial<Record<WorkflowStatus, WorkflowStatus>> = {
-  approved: "in_progress",
-  in_progress: "done",
-};
 
 export default function RecommendationsPage() {
   const domain = useResolvedDomain();
@@ -65,6 +63,9 @@ export default function RecommendationsPage() {
 
   const [selected, setSelected] = useState<DerivedRecommendation | null>(null);
   const [workflowItems, setWorkflowItems] = useState<WorkflowItem[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [workflowLoading, setWorkflowLoading] = useState(true);
+  const [workflowRevision, setWorkflowRevision] = useState(0);
   const [workflowError, setWorkflowError] = useState<string | null>(null);
 
   const ds = bundle?.datasets.recommendations;
@@ -76,7 +77,7 @@ export default function RecommendationsPage() {
 
   useEffect(() => {
     let active = true;
-    setWorkflowError(null);
+    setWorkflowError(null); setWorkflowLoading(true); setWorkflowItems([]); setSelected(null);
     fetch(`/api/workflow/tasks?domain=${encodeURIComponent(domain.id)}`)
       .then(async (response) => {
         const body = (await response.json()) as { items?: WorkflowItem[]; error?: string };
@@ -85,11 +86,11 @@ export default function RecommendationsPage() {
       })
       .catch((err) => {
         if (active) setWorkflowError(err instanceof Error ? err.message : "Could not load workflow tasks.");
-      });
+      }).finally(() => { if (active) setWorkflowLoading(false); });
     return () => {
       active = false;
     };
-  }, [domain.id]);
+  }, [domain.id, workflowRevision]);
 
   const tasks = useMemo(
     () =>
@@ -122,13 +123,14 @@ export default function RecommendationsPage() {
   }, [queue]);
 
   const board = useMemo(() => {
-    const map: Record<WorkflowStatus, WorkflowTask[]> = { approved: [], in_progress: [], done: [] };
-    for (const t of tasks) map[t.status].push(t);
+    const map: Record<WorkflowStatus, WorkflowTask[]> = { approved: [], in_progress: [], shipped: [], verifying: [], done: [] };
+    for (const t of tasks) (map[t.status] ?? map.approved).push(t);
     return map;
   }, [tasks]);
 
   async function decide(rec: DerivedRecommendation, action: "approve" | "dismiss") {
-    setWorkflowError(null);
+    if (busy || workflowLoading) return;
+    setBusy(true); setWorkflowError(null);
     try {
       const response = await fetch("/api/workflow/tasks", {
         method: "POST",
@@ -141,42 +143,26 @@ export default function RecommendationsPage() {
       setSelected(null);
     } catch (err) {
       setWorkflowError(err instanceof Error ? err.message : "Could not save the workflow decision.");
-    }
-  }
-
-  async function advance(item: WorkflowTask) {
-    const next = NEXT_STATUS[item.status];
-    if (!next) return;
-    setWorkflowError(null);
-    try {
-      const response = await fetch("/api/workflow/tasks", {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: item.id, status: next }),
-      });
-      const body = (await response.json()) as { item?: WorkflowItem; error?: string };
-      if (!response.ok || !body.item) throw new Error(body.error || "Could not update the task.");
-      setWorkflowItems((prev) => prev.map((current) => (current.id === body.item!.id ? body.item! : current)));
-    } catch (err) {
-      setWorkflowError(err instanceof Error ? err.message : "Could not update the task.");
-    }
+    } finally { setBusy(false); }
   }
 
   const header = (
     <PageHeader
-      title={`${scopeLabel} — Recommendations & Tasks`}
+      title="Insights"
       description="Priority-scored actions derived from measured signals, with a human approval workflow."
       lastSync={bundle?.lastSync ?? null}
       loading={loading}
     />
   );
 
+  const workflowRecovery = workflowError && <div role="alert" className="rounded-md border border-critical/20 p-3 text-sm">{workflowError}<Button size="sm" onClick={() => setWorkflowRevision((value) => value + 1)}>Retry workflow</Button></div>;
   const scopeNote = <ScopeNote isPortfolio={isPortfolio} noun="recommendations" />;
 
-  if (loading && !bundle) {
+  if ((loading && !bundle) || workflowLoading) {
     return (
       <div className="animate-in space-y-5">
         {header}
+        {workflowRecovery}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Skeleton className="h-24" />
           <Skeleton className="h-24" />
@@ -193,6 +179,7 @@ export default function RecommendationsPage() {
     return (
       <div className="animate-in space-y-5">
         {header}
+        {workflowRecovery}
         <EmptyState title="Could not load live data" description={error} />
       </div>
     );
@@ -202,6 +189,7 @@ export default function RecommendationsPage() {
     return (
       <div className="animate-in space-y-5">
         {header}
+        {workflowRecovery}
         {scopeNote}
         <EmptyState
           title="No recommendations yet — they are derived from live signals at each sync"
@@ -215,6 +203,7 @@ export default function RecommendationsPage() {
   return (
     <div className="animate-in space-y-5">
       {header}
+        {workflowRecovery}
       {scopeNote}
       {workflowError && (
         <p role="alert" className="rounded-md border border-critical/20 bg-critical/10 px-3 py-2 text-xs text-critical">
@@ -327,10 +316,10 @@ export default function RecommendationsPage() {
           <ClipboardList className="h-4 w-4 text-[color:var(--accent)]" />
           <h3 className="text-sm font-semibold text-ink">Task board</h3>
           <span className="text-2xs text-muted">
-            Decisions and status changes are stored in Postgres
+            Open work to manage assignment, shipment and verification
           </span>
         </div>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5">
           {BOARD_COLUMNS.map((col) => {
             const items = board[col.status];
             return (
@@ -354,7 +343,6 @@ export default function RecommendationsPage() {
                     />
                   ) : (
                     items.map((t) => {
-                      const next = NEXT_STATUS[t.status];
                       return (
                         <div
                           key={t.id}
@@ -364,7 +352,7 @@ export default function RecommendationsPage() {
                           <div className="mt-1.5 flex items-center justify-between gap-2">
                             <span className="text-2xs text-muted">{t.module}</span>
                             <span
-                              className="inline-flex h-4 w-4 items-center justify-center rounded border border-border bg-workspace text-[10px] font-semibold text-ink"
+                              className="inline-flex h-4 w-4 items-center justify-center rounded border border-border bg-workspace text-[12px] font-semibold text-ink"
                               title={`Effort: ${EFFORT_LABEL[t.effort]}`}
                             >
                               {t.effort}
@@ -374,16 +362,7 @@ export default function RecommendationsPage() {
                             <span className="text-2xs text-muted tnum">
                               Priority {t.priorityScore}
                             </span>
-                            {next ? (
-                              <Button variant="ghost" size="sm" onClick={() => advance(t)}>
-                                {next === "in_progress" ? "Start" : "Mark done"}
-                                <ArrowRight className="h-3 w-3" />
-                              </Button>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-2xs font-medium text-success">
-                                <CheckCircle2 className="h-3 w-3" /> Done
-                              </span>
-                            )}
+                            <Link href={`/work?site=${encodeURIComponent(domain.id)}&item=${encodeURIComponent(t.id)}`} className="inline-flex min-h-9 items-center gap-1 text-xs font-semibold text-purple">Open work <ArrowRight className="h-3 w-3" /></Link>
                           </div>
                         </div>
                       );
@@ -407,10 +386,11 @@ export default function RecommendationsPage() {
             <div className="flex items-center justify-between gap-2">
               <span className="text-2xs text-muted">The decision is saved to the shared workflow</span>
               <div className="flex items-center gap-2">
-                <Button variant="secondary" size="sm" onClick={() => decide(selected, "dismiss")}>
+                {workflowError && <p role="alert" className="text-sm text-critical">{workflowError}</p>}
+                <Button variant="secondary" size="sm" disabled={busy || Boolean(workflowError)} onClick={() => decide(selected, "dismiss")}>
                   <XCircle className="h-3.5 w-3.5" /> Dismiss
                 </Button>
-                <Button variant="primary" size="sm" onClick={() => decide(selected, "approve")}>
+                <Button variant="primary" size="sm" disabled={busy || Boolean(workflowError)} onClick={() => decide(selected, "approve")}>
                   <CheckCircle2 className="h-3.5 w-3.5" /> Approve &amp; create task
                 </Button>
               </div>

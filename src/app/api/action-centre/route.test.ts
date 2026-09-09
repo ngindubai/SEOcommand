@@ -109,3 +109,23 @@ describe("priority task read model", () => {
   });
 
 });
+
+it("groups repeated incidents without changing their stored historical events", async () => {
+  await testDb.insert(schema.portfolioNotifications).values([
+    notice(601, { eventType: "site_unavailable", title: "Website unavailable", fingerprint: "a:site_unavailable:old", severity: "critical" }),
+    notice(602, { eventType: "site_unavailable", title: "Website unavailable again", fingerprint: "a:site_unavailable:new", severity: "critical", createdAt: new Date("2026-09-01") }),
+  ]);
+  const data = await read("scope=a&kind=alerts");
+  expect(data.items.filter((item) => [id(601), id(602)].includes(item.id)).map((item) => item.id)).toEqual([id(602)]);
+  expect(data.items.find((item) => item.id === id(602))?.detail).toContain("2 related events");
+  expect(await testDb.select().from(schema.portfolioNotifications).where(eq(schema.portfolioNotifications.eventType, "site_unavailable"))).toHaveLength(2);
+});
+it("paginates a filtered queue without skipping items or changing total counts", async () => {
+  const first = await read("scope=a&kind=alerts&limit=2&offset=0");
+  const second = await read("scope=a&kind=alerts&limit=2&offset=2");
+  expect(first.meta.total).toBe(4);
+  expect(second.meta.total).toBe(4);
+  expect(first.meta.hasMore).toBe(true);
+  expect(second.meta.hasMore).toBe(false);
+  expect(new Set([...first.items, ...second.items].map((item) => item.id)).size).toBe(4);
+});

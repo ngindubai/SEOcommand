@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { Modal } from "./modal";
 
 /** Right-side detail drawer — opens over the workspace without losing context. */
 export function Drawer({
@@ -22,17 +22,10 @@ export function Drawer({
   footer?: React.ReactNode;
   width?: string;
 }) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={title}>
+    <Modal open={open} onClose={onClose} title={title}>
       <div
         className="absolute inset-0 bg-rail/40 backdrop-blur-[1px]"
         onClick={onClose}
@@ -51,7 +44,8 @@ export function Drawer({
           </div>
           <button
             onClick={onClose}
-            className="rounded-md p-1.5 text-muted hover:bg-workspace hover:text-ink"
+            autoFocus
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-muted hover:bg-workspace hover:text-ink"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -60,7 +54,7 @@ export function Drawer({
         <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
         {footer && <div className="border-t border-border px-5 py-3">{footer}</div>}
       </div>
-    </div>
+    </Modal>
   );
 }
 

@@ -50,7 +50,7 @@ export function SyncBadge({
       )}
       title={`Latest provider sync: ${lastSync}`}
     >
-      <Database className="h-3 w-3" /> Live · {relativeFromNow(lastSync)}
+      <Database className="h-3 w-3" /> Collected {relativeFromNow(lastSync)}
     </span>
   );
 }

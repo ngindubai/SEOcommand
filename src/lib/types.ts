@@ -226,7 +226,7 @@ export interface CrawlRun {
   domainId: DomainId;
   startedAt: string;
   completedAt: string;
-  pagesCrawled: number;
+  pagesCrawled: number | null;
   healthScore: number;
   newIssues: number;
   resolvedIssues: number;

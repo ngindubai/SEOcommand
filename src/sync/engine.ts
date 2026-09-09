@@ -478,13 +478,13 @@ async function deriveRecommendations(domainId: DomainId): Promise<DerivedRecomme
     recs.push({
       id: `${domainId}-rec-${++n}`,
       domainId,
-      title: `Push ${striking.length} striking-distance queries onto page one`,
+      title: `Review ${striking.length} queries ranking 4–20`,
       module: "Rankings",
       priorityScore: Math.min(95, 60 + striking.length),
       estImpact: `Top candidates: ${top.map((t) => `"${t.query}" (pos ${t.position}, ${t.impressions} impr.)`).join("; ")}`,
       confidence: "high",
       effort: "M",
-      evidence: `Measured Search Console queries ranking 4–20 with real impression volume.`,
+      evidence: `Measured Search Console queries ranking 4–20. Queries already in the top ten need a top-three or click-through improvement; positions 11–20 are page-one candidates. Validate current intent and evidence before approval.`,
       relatedMetric: "Organic clicks",
     });
   }

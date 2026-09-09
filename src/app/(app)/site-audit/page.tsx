@@ -43,13 +43,6 @@ function crawlTone(status: CrawlRun["status"]): "success" | "info" | "critical" 
   return status === "completed" ? "success" : status === "running" ? "info" : "critical";
 }
 
-/** Bar + text tone for a 0–100 category score. */
-function barTone(score: number): { bar: string; text: string } {
-  if (score >= 85) return { bar: "bg-success", text: "text-success" };
-  if (score >= 70) return { bar: "bg-warning", text: "text-[#B9791A]" };
-  return { bar: "bg-critical", text: "text-critical" };
-}
-
 export default function SiteAuditPage() {
   const domain = useResolvedDomain();
   const { scope } = useDomain();
@@ -162,7 +155,7 @@ export default function SiteAuditPage() {
       <div className="animate-in space-y-5">
         <PageHeader
           title="Site Audit"
-          description="Technical SEO health, latest crawl and prioritised issues — scored with a transparent, weighted method."
+          description="Provider audit score, crawl coverage and prioritised technical issues."
           lastSync={null}
           loading
         />
@@ -185,7 +178,7 @@ export default function SiteAuditPage() {
       <div className="animate-in space-y-5">
         <PageHeader
           title="Site Audit"
-          description="Technical SEO health, latest crawl and prioritised issues — scored with a transparent, weighted method."
+          description="Provider audit score, crawl coverage and prioritised technical issues."
           lastSync={null}
         />
         <EmptyState title="Could not load live data" description={error} />
@@ -197,7 +190,7 @@ export default function SiteAuditPage() {
     <div className="animate-in space-y-5">
       <PageHeader
         title="Site Audit"
-        description="Technical SEO health, latest crawl and prioritised issues — scored with a transparent, weighted method."
+        description="Provider audit score, crawl coverage and prioritised technical issues."
         lastSync={bundle?.lastSync ?? null}
         loading={loading}
       />
@@ -210,7 +203,7 @@ export default function SiteAuditPage() {
           label="Overall health score"
           value={onpage ? String(onpage.healthScore) : "—"}
           accent
-          hint="Weighted average, 0–100"
+          hint="DataForSEO overall score, 0–100"
         />
         <KpiCard
           label="Total issues"
@@ -224,7 +217,7 @@ export default function SiteAuditPage() {
         />
         <KpiCard
           label="Pages crawled"
-          value={crawlRun ? fullNumber(crawlRun.pagesCrawled) : "—"}
+          value={crawlRun?.pagesCrawled != null ? fullNumber(crawlRun.pagesCrawled) : "—"}
           hint={crawlRun ? `Crawl started ${formatDate(crawlRun.startedAt)}` : "No crawl completed yet"}
         />
       </div>
@@ -248,48 +241,15 @@ export default function SiteAuditPage() {
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
         <Card className="xl:col-span-3">
           <CardHeader
-            title="Health score breakdown"
-            subtitle="Category scores that compose the overall Orwell health score"
-            action={<Gauge className="h-4 w-4 text-[color:var(--accent)]" />}
+            title="Issues by category"
+            subtitle="Issue types and affected-page occurrences from the latest crawl"
+            action={<Gauge className="h-4 w-4 text-purple" />}
           />
-          {onpage && onpage.breakdown.length > 0 ? (
-            <div className="divide-y divide-border">
-              {onpage.breakdown.map((b) => {
-                const tone = barTone(b.score);
-                return (
-                  <div key={b.category} className="px-4 py-3">
-                    <div className="mb-1.5 flex items-center justify-between gap-3">
-                      <span className="text-sm font-medium text-ink">{b.category}</span>
-                      <div className="flex items-center gap-3 text-2xs text-muted tnum">
-                        <span>weight {Math.round(b.weight * 100)}%</span>
-                        <span>
-                          {b.issues} issue{b.issues === 1 ? "" : "s"}
-                        </span>
-                        <span className={cn("w-8 text-right font-semibold", tone.text)}>{b.score}</span>
-                      </div>
-                    </div>
-                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-workspace">
-                      <div
-                        className={cn("h-full rounded-full", tone.bar)}
-                        style={{ width: `${Math.max(0, Math.min(100, b.score))}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="p-4">
-              <EmptyState
-                title="No crawl data yet"
-                description="Category scores populate once the first OnPage crawl completes."
-              />
-            </div>
-          )}
-          <p className="border-t border-border px-4 py-3 text-2xs leading-relaxed text-muted">
-            The Orwell health score is a transparent weighted average of category scores. Weights are
-            shown per row and documented in docs/scoring-methodology.md — there is no hidden formula.
-          </p>
+          {onpage ? <div className="divide-y divide-border">{Array.from(new Set(issues.map((issue) => issue.category))).map((category) => {
+            const rows = issues.filter((issue) => issue.category === category);
+            return <div key={category} className="flex flex-wrap justify-between gap-3 px-4 py-3"><span className="font-semibold">{category}</span><span className="text-sm text-muted">{rows.length} issue types · {rows.reduce((sum, issue) => sum + issue.affectedPages, 0)} affected-page occurrences</span></div>;
+          })}{!issues.length && <p className="p-4 text-sm text-muted">No issue types reported by this crawl.</p>}</div> : <p className="p-4 text-sm text-muted">Run a crawl to collect technical evidence.</p>}
+          <p className="border-t border-border p-4 text-sm leading-6 text-muted">The overall score is supplied by DataForSEO. Separate category scores are not available. A page can appear under several issue types; occurrences are not unique pages. Legacy page counts are withheld until a corrected crawl verifies them.</p>
         </Card>
 
         <Card className="xl:col-span-2">
@@ -317,7 +277,7 @@ export default function SiteAuditPage() {
               <div className="flex items-center justify-between px-4 py-3">
                 <span className="text-sm text-muted">Pages crawled</span>
                 <span className="text-sm font-medium text-ink tnum">
-                  {fullNumber(crawlRun.pagesCrawled)}
+                  {crawlRun.pagesCrawled == null ? "Not verified" : fullNumber(crawlRun.pagesCrawled)}
                 </span>
               </div>
             </div>
@@ -410,7 +370,7 @@ export default function SiteAuditPage() {
               } affected`
             : undefined
         }
-        footer={!isPortfolio && selected ? <div className="flex items-center justify-between gap-3"><span className="text-[10px] text-muted">Carry this issue and its affected URL into the website workflow.</span><Button variant="primary" onClick={() => { setWorkFinding(technicalFinding(selected)); setSelected(null); }}><ListTodo className="h-4 w-4" />Create work</Button></div> : undefined}
+        footer={!isPortfolio && selected ? <div className="flex items-center justify-between gap-3"><span className="text-[12px] text-muted">Carry this issue and its affected URL into the website workflow.</span><Button variant="primary" onClick={() => { setWorkFinding(technicalFinding(selected)); setSelected(null); }}><ListTodo className="h-4 w-4" />Create work</Button></div> : undefined}
       >
         {selected && (
           <div className="space-y-1">
