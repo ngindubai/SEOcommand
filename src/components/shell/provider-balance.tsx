@@ -40,13 +40,14 @@ export function ProviderBalance() {
   const tone = state.status === "ready"
     ? state.balanceUsd <= 10 ? "critical" : state.balanceUsd <= 50 ? "warning" : "healthy"
     : "neutral";
+  const depleted = state.status === "ready" && state.balanceUsd <= 0;
   const label = state.status === "loading" ? "Loading DataForSEO balance"
-    : state.status === "ready" ? `DataForSEO balance ${formatter.format(state.balanceUsd)}. Updated ${new Date(state.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+    : state.status === "ready" ? `DataForSEO balance ${formatter.format(state.balanceUsd)}.${depleted ? " Top up required to resume paid scans." : ""} Updated ${new Date(state.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
       : "DataForSEO balance unavailable";
 
   return (
     <Link
-      href="/settings"
+      href="/settings#connections"
       aria-label={label}
       title={label}
       className={cn(
@@ -63,9 +64,9 @@ export function ProviderBalance() {
       )}><WalletCards className="h-3.5 w-3.5" /></span>
       <span className="hidden leading-tight xl:block">
         <span className="block text-[9px] font-bold uppercase tracking-[0.12em] text-muted">DataForSEO</span>
-        <span className="block text-xs font-extrabold text-ink tnum">{state.status === "ready" ? formatter.format(state.balanceUsd) : state.status === "loading" ? "Loading…" : "Unavailable"}</span>
+        <span className="block text-xs font-extrabold text-ink tnum">{state.status === "ready" ? `${formatter.format(state.balanceUsd)}${depleted ? " · Top up required" : ""}` : state.status === "loading" ? "Loading…" : "Balance unavailable"}</span>
       </span>
-      <span className="text-xs font-extrabold text-ink tnum xl:hidden">{state.status === "ready" ? formatter.format(state.balanceUsd) : "—"}</span>
+      <span className="text-xs font-extrabold text-ink tnum xl:hidden">{state.status === "ready" ? `${formatter.format(state.balanceUsd)}${depleted ? " · Top up" : ""}` : "—"}</span>
     </Link>
   );
 }

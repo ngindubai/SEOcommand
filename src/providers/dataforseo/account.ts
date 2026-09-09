@@ -9,9 +9,13 @@ function record(value: unknown): Row {
 
 export function parseDataForSeoBalance(rows: Row[]): number {
   const value = record(rows[0]?.money).balance;
-  if (value === null || value === undefined || value === "") throw new Error("DataForSEO balance is unavailable.");
+  if (typeof value !== "number" && (typeof value !== "string" || !value.trim())) {
+    throw new Error("DataForSEO balance is unavailable.");
+  }
   const balance = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(balance) || balance < 0) throw new Error("DataForSEO balance is unavailable.");
+  // DataForSEO can report a negative balance when the account runs out of credit.
+  // Preserve it so the UI can explain that a top-up is required.
+  if (!Number.isFinite(balance)) throw new Error("DataForSEO balance is unavailable.");
   return balance;
 }
 

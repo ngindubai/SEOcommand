@@ -65,6 +65,11 @@ interface DataForSeoHealth {
   error?: string;
 }
 
+interface DataForSeoBalance {
+  available: boolean;
+  balanceUsd?: number;
+}
+
 interface GoogleHealth {
   configured: boolean;
   gscReachable?: boolean;
@@ -129,6 +134,17 @@ const SECTIONS: { id: SectionId; label: string; icon: typeof Globe; hint: string
 export default function SettingsPage() {
   const [section, setSection] = useState<SectionId>("domains");
   const { data: pm, loading: pmLoading } = useLivePortfolio();
+
+  useEffect(() => {
+    const followSectionLink = () => {
+      const requested = window.location.hash.slice(1);
+      const target = SECTIONS.find((item) => item.id === requested);
+      if (target) setSection(target.id);
+    };
+    followSectionLink();
+    window.addEventListener("hashchange", followSectionLink);
+    return () => window.removeEventListener("hashchange", followSectionLink);
+  }, []);
 
   // Latest sync across the portfolio, purely for the header badge.
   const lastSync = useMemo(() => {
@@ -306,7 +322,11 @@ function ConnectionCard({
 
 function ConnectionsSection() {
   const dfs = useProbe<DataForSeoHealth>("/api/health/dataforseo");
+  const balance = useProbe<DataForSeoBalance>("/api/providers/dataforseo/balance");
   const google = useProbe<GoogleHealth>("/api/health/google");
+  const credit = balance.status === "done" && balance.data.available && Number.isFinite(balance.data.balanceUsd)
+    ? balance.data.balanceUsd! : null;
+  const depleted = credit !== null && credit <= 0;
   const missingDfsMarkets =
     dfs.status === "done"
       ? Object.entries(dfs.data.locations ?? {}).filter(([, location]) => location.error)
@@ -362,13 +382,30 @@ function ConnectionsSection() {
               title="DataForSEO"
               detail="Rankings, keywords, backlinks, on-page crawls and AI visibility checks."
               badge={
-                missingDfsMarkets.length > 0 ? (
+                depleted ? (
+                  <StatusBadge label="Top up required" tone="critical" />
+                ) : missingDfsMarkets.length > 0 ? (
                   <StatusBadge label="Markets required" tone="warning" />
                 ) : (
                   <StatusBadge label="Connected" tone="success" />
                 )
               }
             >
+              {credit !== null && (
+                <div className={cn("mb-2 font-semibold tnum", depleted && "text-critical")}>
+                  Account balance {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(credit)}
+                </div>
+              )}
+              {depleted && (
+                <div className="mb-3 rounded-md border border-critical/20 bg-critical/5 p-3 text-xs">
+                  <p>Your connection is working, but the account has no credit for paid scans. Add credit in DataForSEO to resume them.</p>
+                  <p className="mt-1 text-muted">Account credit is separate from your monthly spending limit.</p>
+                  <a href="https://app.dataforseo.com/" target="_blank" rel="noopener noreferrer" className="mt-2 inline-block font-bold text-critical underline underline-offset-2">Open DataForSEO to add credit</a>
+                </div>
+              )}
+              {balance.status !== "loading" && credit === null && (
+                <p className="mb-2 text-2xs text-muted">Connection verified. Account balance could not be checked.</p>
+              )}
               {dfs.data.models != null && (
                 <div className="tnum">{dfs.data.models} LLM models visible (zero-cost probe)</div>
               )}

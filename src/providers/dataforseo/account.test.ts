@@ -10,9 +10,15 @@ describe("DataForSEO account balance", () => {
     expect(parseDataForSeoBalance([{ money: { balance: "42.10" } }])).toBe(42.1);
   });
 
+  it.each([0, -0.006292, "-0.006292"])("preserves depleted account balance %s", (balance) => {
+    expect(parseDataForSeoBalance([{ money: { balance } }])).toBe(Number(balance));
+  });
+
   it("rejects missing or invalid balances", () => {
     expect(() => parseDataForSeoBalance([{ money: {} }])).toThrow("DataForSEO balance is unavailable.");
     expect(() => parseDataForSeoBalance([{ money: { balance: null } }])).toThrow("DataForSEO balance is unavailable.");
-    expect(() => parseDataForSeoBalance([{ money: { balance: -1 } }])).toThrow("DataForSEO balance is unavailable.");
+    for (const balance of ["", "   ", false, [], {}, "not a number", NaN, Infinity, -Infinity]) {
+      expect(() => parseDataForSeoBalance([{ money: { balance } }])).toThrow("DataForSEO balance is unavailable.");
+    }
   });
 });
