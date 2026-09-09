@@ -3,12 +3,20 @@ import {
   Globe2, Home, LayoutDashboard, Link2, ListChecks, ListTodo, MapPinned, Radar, Search, Settings,
   ScanLine, ShieldCheck, Sparkles, Swords, TrendingUp, Trophy, Waypoints, type LucideIcon,
 } from "lucide-react";
+import { hrefWithScope } from "./site-context";
 
 export interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
   group?: "global" | "research" | "site";
+}
+
+export function navigationHref(item: Pick<NavItem, "href" | "group">, scope: string): string {
+  // Research home is deliberately independent; Search performance shares its
+  // route but belongs to the selected website.
+  if (item.href === "/research" && item.group !== "site") return "/research?workspace=global";
+  return hrefWithScope(item.href, scope);
 }
 
 export const GLOBAL_NAV: NavItem[] = [

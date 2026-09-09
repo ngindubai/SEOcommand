@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { ArrowLeft, LogOut, Moon, Search, Sun, Command, ChevronRight, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useDomain } from "./domain-context";
-import { GLOBAL_NAV, RESEARCH_NAV, SITE_NAV, type NavItem } from "@/lib/nav";
+import { GLOBAL_NAV, RESEARCH_NAV, SITE_NAV, navigationHref, type NavItem } from "@/lib/nav";
 import { roleLabel } from "@/lib/auth";
 import { NotificationBell } from "./notification-bell";
 import { JobDrawer } from "./job-drawer";
@@ -80,11 +80,9 @@ export function TopNav() {
   }
 
   function openTool(item: NavItem) {
-    if (item.group === "site") {
-      if (!activeDomain) return router.push("/sites");
-      return router.push(`${item.href}?site=${encodeURIComponent(activeDomain.id)}`);
-    }
-    router.push(item.href);
+    setSearchOpen(false);
+    if (item.group === "site" && !activeDomain) return router.push("/sites");
+    router.push(navigationHref(item, scope));
   }
 
   const initials = (user?.name || user?.email || "Orwell")

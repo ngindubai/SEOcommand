@@ -1,7 +1,7 @@
 /**
  * Routes whose data and mutations belong to one explicitly selected website.
- * Global workspaces such as Portfolio, Research and Action Centre must never
- * inherit a previously selected website.
+ * The server still requires an explicit website ID. Client navigation carries
+ * the user's selected website into these routes before their tools mount.
  */
 const SITE_CONTEXT_ROUTES = [
   "/domain",
@@ -40,4 +40,32 @@ export function requiresSiteContext(pathname: string): boolean {
   return SITE_CONTEXT_ROUTES.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`),
   );
+}
+
+/** Explicit destinations win over the remembered selection, including Back/Forward. */
+export function scopeFromLocation(pathname: string, params: URLSearchParams, saved: string | null): string {
+  const site = siteIdFromLocation(pathname, params.get("site"));
+  if (site) return site;
+  const scope = params.get("scope");
+  if (scope === "portfolio" || scope?.startsWith("group:")) return scope;
+  // Existing task/dashboard deep links use ?scope=<website>.
+  if (["/portfolio", "/action-centre"].includes(pathname) && clean(scope)) return clean(scope)!;
+  return clean(saved) ?? "portfolio";
+}
+
+/** Carry context only into tools that support it; shared admin/research stay shared. */
+export function hrefWithScope(href: string, scope: string): string {
+  if (!href.startsWith("/") || href.startsWith("//")) return href;
+  const url = new URL(href, "https://seo-command.local");
+  if (siteIdFromLocation(url.pathname, url.searchParams.get("site")) || url.searchParams.has("scope")) return href;
+  if (url.pathname === "/sites/new" || url.searchParams.get("workspace") === "global") return href;
+  if (scope === "portfolio") return href;
+  if (scope.startsWith("group:")) {
+    if (!["/portfolio", "/action-centre"].includes(url.pathname)) return href;
+    url.searchParams.set("scope", scope);
+  } else {
+    if (!requiresSiteContext(url.pathname) && !["/portfolio", "/research", "/reports", "/action-centre", "/ai-visibility"].includes(url.pathname)) return href;
+    url.searchParams.set("site", scope);
+  }
+  return `${url.pathname}${url.search}${url.hash}`;
 }

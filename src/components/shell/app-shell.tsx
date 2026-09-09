@@ -14,9 +14,10 @@ import { requiresSiteContext, siteIdFromLocation } from "@/lib/site-context";
 function SiteContextBoundary({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { activeDomain, sites, sitesLoading } = useDomain();
+  const { activeDomain, sites, sitesLoading, scopeReady } = useDomain();
   const requestedSiteId = siteIdFromLocation(pathname, searchParams.get("site"));
 
+  if (!scopeReady) return <div className="space-y-4"><Skeleton className="h-16" /><Skeleton className="h-56" /></div>;
   if (!requiresSiteContext(pathname) && !requestedSiteId) return children;
   if (requestedSiteId && activeDomain?.id === requestedSiteId) return children;
 

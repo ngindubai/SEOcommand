@@ -5,10 +5,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Menu, X, Layers, Circle, Folder } from "lucide-react";
-import { NAV_ITEMS } from "@/lib/nav";
+import { NAV_ITEMS, navigationHref } from "@/lib/nav";
 import { useDomain } from "./domain-context";
 import { cn } from "@/lib/cn";
-import { requiresSiteContext } from "@/lib/site-context";
+import { hrefWithScope, requiresSiteContext } from "@/lib/site-context";
 
 const mobileLinks = Array.from(new Map(NAV_ITEMS.map((item) => [`${item.group === "site" ? "site" : "global"}:${item.href}`, item])).values());
 
@@ -29,7 +29,7 @@ export function MobileNav() {
 
   function selectPortfolio() {
     setScope("portfolio");
-    router.push("/portfolio");
+    router.push("/portfolio?scope=portfolio");
     setOpen(false);
   }
 
@@ -65,7 +65,7 @@ export function MobileNav() {
           <div className="absolute inset-0 bg-ink/30" onClick={() => setOpen(false)} aria-hidden />
           <div className="animate-drawer absolute left-0 top-0 flex h-full w-[84%] max-w-sm flex-col border-r border-border bg-card text-ink">
             <div className="flex shrink-0 items-center justify-between px-4 py-4">
-              <button onClick={selectPortfolio} aria-label="SEO Command dashboard"><BrandLogo className="w-52 max-w-full" /></button>
+              <Link href={hrefWithScope("/portfolio", scope)} onClick={() => setOpen(false)} aria-label="SEO Command dashboard"><BrandLogo className="w-52 max-w-full" /></Link>
               <button onClick={() => setOpen(false)} aria-label="Close" className="rounded-md p-1.5 hover:bg-nav">
                 <X className="h-5 w-5" />
               </button>
@@ -85,7 +85,7 @@ export function MobileNav() {
                   return (
                     <Link
                       key={`${item.group}:${item.href}`}
-                      href={scope !== "portfolio" && !scope.startsWith("group:") && isSite ? `${item.href}${item.href.includes("?") ? "&" : "?"}site=${encodeURIComponent(scope)}` : item.href}
+                      href={navigationHref(item, scope)}
                       onClick={() => setOpen(false)}
                       aria-current={active ? "page" : undefined}
                       className={cn(
@@ -109,7 +109,7 @@ export function MobileNav() {
                     scope === "portfolio" ? "bg-rail-selected" : "hover:bg-workspace",
                   )}
                 >
-                  <Layers className="h-4 w-4" /> Portfolio
+                  <Layers className="h-4 w-4" /> All websites
                 </button>
                 {groups.map((group) => (
                   <button

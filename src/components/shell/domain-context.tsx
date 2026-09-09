@@ -1,10 +1,10 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { Domain, DomainId } from "@/lib/types";
 import type { PortfolioGroup } from "@/platform/types";
-import { siteIdFromLocation } from "@/lib/site-context";
+import { hrefWithScope, scopeFromLocation } from "@/lib/site-context";
 
 export type Scope = DomainId | "portfolio" | `group:${string}`;
 
@@ -16,6 +16,7 @@ interface DomainState {
   sites: Domain[];
   groups: PortfolioGroup[];
   sitesLoading: boolean;
+  scopeReady: boolean;
   refreshPortfolio: () => Promise<void>;
   range: RangeKey;
   setRange: (r: RangeKey) => void;
@@ -28,12 +29,19 @@ const DomainCtx = createContext<DomainState | null>(null);
 export function DomainProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [scope, setScope] = useState<Scope>("portfolio");
+  const router = useRouter();
+  const [scope, setScopeState] = useState<Scope>("portfolio");
+  const selection = useRef<Scope | null>(null);
   const [scopeReady, setScopeReady] = useState(false);
   const [range, setRange] = useState<RangeKey>("28d");
   const [sites, setSites] = useState<Domain[]>([]);
   const [groups, setGroups] = useState<PortfolioGroup[]>([]);
   const [sitesLoading, setSitesLoading] = useState(true);
+  const setScope = useCallback((next: Scope) => {
+    selection.current = next;
+    setScopeState(next);
+    try { window.localStorage.setItem("orwell.scope", next); } catch { /* Storage may be disabled. */ }
+  }, []);
 
   const refreshPortfolio = useCallback(async () => {
     setSitesLoading(true);
@@ -67,24 +75,26 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
       active = false;
     };
   }, []);
-  // A route-level website is authoritative. Otherwise restore the user's last
-  // reporting scope. Keeping this in one effect prevents a saved portfolio
-  // scope from racing and overwriting a directly opened website workspace.
+  // Keep explicit routes authoritative and remember the selection on unscoped
+  // pages. Write it into website-aware URLs before mounting their data/actions.
   useEffect(() => {
-    const requested = siteIdFromLocation(pathname, searchParams.get("site"));
-    const requestedScope = searchParams.get("scope");
-    const saved = window.localStorage.getItem("orwell.scope");
-    if (requested) setScope(requested as Scope);
-    else if ((pathname === "/portfolio" || pathname === "/action-centre") && requestedScope) setScope(requestedScope as Scope);
-    else if (pathname === "/portfolio" && saved?.startsWith("group:")) setScope(saved as Scope);
-    else setScope("portfolio");
+    let saved: string | null = selection.current;
+    // Restore once per tab; another tab must not switch this tab's website.
+    if (saved === null) {
+      try { saved = window.localStorage.getItem("orwell.scope"); } catch { /* Use in-memory selection. */ }
+    }
+    const next = scopeFromLocation(pathname, new URLSearchParams(searchParams.toString()), saved);
+    setScope(next);
     setScopeReady(true);
-  }, [pathname, searchParams]);
+    const currentHref = `${pathname}${searchParams.size ? `?${searchParams}` : ""}${window.location.hash}`;
+    const nextHref = hrefWithScope(currentHref, next);
+    if (nextHref !== currentHref) router.replace(nextHref, { scroll: false });
+  }, [pathname, searchParams, router, setScope]);
 
-  // Persist selection across navigation within the session after hydration.
-  useEffect(() => {
-    if (scopeReady) window.localStorage.setItem("orwell.scope", scope);
-  }, [scope, scopeReady]);
+  const currentHref = `${pathname}${searchParams.size ? `?${searchParams}` : ""}`;
+  const contextReady = scopeReady
+    && scopeFromLocation(pathname, new URLSearchParams(searchParams.toString()), scope) === scope
+    && hrefWithScope(currentHref, scope) === currentHref;
 
   // Website identity stays in its marker; the application keeps one shared theme.
   const activeDomain = scope === "portfolio" || scope.startsWith("group:")
@@ -107,11 +117,12 @@ export function DomainProvider({ children }: { children: React.ReactNode }) {
       sites,
       groups,
       sitesLoading,
+      scopeReady: contextReady,
       refreshPortfolio,
       range,
       setRange,
     }),
-    [scope, activeDomain, activeGroup, sites, groups, sitesLoading, refreshPortfolio, range],
+    [scope, setScope, activeDomain, activeGroup, sites, groups, sitesLoading, contextReady, refreshPortfolio, range],
   );
 
   return <DomainCtx.Provider value={value}>{children}</DomainCtx.Provider>;

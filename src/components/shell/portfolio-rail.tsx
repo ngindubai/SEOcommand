@@ -8,7 +8,8 @@ import {
   Check, ChevronDown, ChevronRight, Circle, Ellipsis, Folder, FolderOpen,
   FolderPlus, GripVertical, Pencil, Plus, Settings2, Trash2, X,
 } from "lucide-react";
-import { GLOBAL_NAV } from "@/lib/nav";
+import { GLOBAL_NAV, navigationHref } from "@/lib/nav";
+import { hrefWithScope } from "@/lib/site-context";
 import { useDomain } from "./domain-context";
 import { cn } from "@/lib/cn";
 import type { PortfolioGroup } from "@/platform/types";
@@ -233,7 +234,7 @@ export function PortfolioRail() {
 
   return (
     <aside className="relative hidden w-[292px] shrink-0 flex-col border-r border-border bg-rail text-ink lg:flex" onDragOver={(event) => event.preventDefault()}>
-      <Link href="/portfolio" aria-label="SEO Command dashboard" className="flex h-20 items-center border-b border-border px-5">
+      <Link href={hrefWithScope("/portfolio", scope)} aria-label="SEO Command dashboard" className="flex h-20 items-center border-b border-border px-5">
         <BrandLogo className="w-56" />
       </Link>
       <nav className="space-y-1 border-b border-border p-3">
@@ -242,7 +243,7 @@ export function PortfolioRail() {
             ? pathname === "/research" && !searchParams.get("site")
             : pathname.startsWith(item.href);
           const Icon = item.icon;
-          return <Link key={item.href} href={item.href} className={cn("flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold transition-colors", active ? "bg-purple/10 text-purple" : "text-muted hover:bg-card hover:text-ink")}><Icon className={cn("h-4 w-4", active && "text-purple")} />{item.label}</Link>;
+          return <Link key={item.href} href={navigationHref(item, scope)} className={cn("flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-semibold transition-colors", active ? "bg-purple/10 text-purple" : "text-muted hover:bg-card hover:text-ink")}><Icon className={cn("h-4 w-4", active && "text-purple")} />{item.label}</Link>;
         })}
       </nav>
       <div className="flex min-h-0 flex-1 flex-col">
@@ -252,6 +253,7 @@ export function PortfolioRail() {
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3" onClick={() => menuId && setMenuId(null)}>
           <div className="space-y-0.5">
+            <Link href="/portfolio?scope=portfolio" className="block rounded-md px-3 py-2 text-xs font-semibold text-muted hover:bg-card hover:text-ink">All websites</Link>
             {groupRows()}
             {(
               <div className="mt-2 rounded-md border border-dashed border-transparent px-1 py-1 hover:border-border" onDragOver={(event) => event.preventDefault()} onDrop={(event) => {

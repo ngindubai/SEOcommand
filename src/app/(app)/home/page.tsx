@@ -4,8 +4,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card } from "@/components/ui/primitives";
 
 const STARTS = [
-  { href: "/research", title: "Research a market", description: "Explore demand, competitors and opportunities without choosing a website.", icon: Search, color: "#335CFF" },
-  { href: "/portfolio", title: "Review the portfolio", description: "See performance, risks and opportunities across every managed website.", icon: LayoutDashboard, color: "#12B8C4" },
+  { href: "/research?workspace=global", title: "Research a market", description: "Explore demand, competitors and opportunities without choosing a website.", icon: Search, color: "#335CFF" },
+  { href: "/portfolio?scope=portfolio", title: "Review the portfolio", description: "See performance, risks and opportunities across every managed website.", icon: LayoutDashboard, color: "#12B8C4" },
   { href: "/action-centre", title: "Continue execution", description: "Open assigned recommendations, approvals and work already in progress.", icon: ListChecks, color: "#FF6B5E" },
   { href: "/sites", title: "Open a website", description: "Enter one website's rankings, technical, content, link and reporting workspace.", icon: Building2, color: "#7137F5" },
 ] as const;
