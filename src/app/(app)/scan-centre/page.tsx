@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { EvidenceMessage } from "@/components/ui/evidence-message";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Activity, Bot, Check, ChevronRight, CircleDollarSign, Clock3, Database, Globe2, Link2, Loader2, MapPin, Play, Radar, RefreshCcw, Search, ShieldCheck, Sparkles, X } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button, Card, EmptyState, StatusBadge } from "@/components/ui/primitives";
 import { useDomain } from "@/components/shell/domain-context";
 import { cn } from "@/lib/cn";
+import { switchScopeHref } from "@/lib/site-context";
 import type { ScanModule } from "@/platform/types";
 
 type ModuleMeta = { id: ScanModule; label: string; description: string; paid: boolean; estimatedUsd: number; color: string; lastUpdatedAt: string | null; lastUpdatedDate: string | null };
@@ -33,6 +34,7 @@ function updatedLabel(module: ModuleMeta) {
 
 export default function ScanCentrePage() {
   const { activeDomain, sites, setScope } = useDomain();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const requestedModule = searchParams.get("module") as ScanModule | null;
   const [siteSlug, setSiteSlug] = useState(activeDomain?.id ?? "");
@@ -101,7 +103,7 @@ export default function ScanCentrePage() {
 
   return <div>
     <PageHeader title="Scan Centre" description="Refresh one tool or run a complete website scan—with cost preview, live progress and direct links to the evidence." actions={
-      <select aria-label="Scan website" value={siteSlug} onChange={(event) => { setSiteSlug(event.target.value); setScope(event.target.value); }} className="h-9 min-w-52 rounded-md border border-border bg-card px-3 text-sm font-semibold text-ink outline-none focus:border-purple">
+      <select aria-label="Scan website" value={siteSlug} onChange={(event) => { const next = event.target.value; setSiteSlug(next); setScope(next); router.push(switchScopeHref("/scan-centre", new URLSearchParams(searchParams), next)); }} className="h-9 min-w-52 rounded-md border border-border bg-card px-3 text-sm font-semibold text-ink outline-none focus:border-purple">
         <option value="" disabled>Choose a website</option>
         {sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
       </select>
