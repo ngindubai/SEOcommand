@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowUpRight, Download, RefreshCw, Search } from "lucide-react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useDomain } from "@/components/shell/domain-context";
@@ -15,9 +16,15 @@ import styles from "@/components/command/command.module.css";
 type Payload = { runs: ResearchRun[]; defaults: { keywords: string[]; domains: string[]; businesses: { id: string; name: string; identified: boolean }[]; market: { label: string; location_code: number; language_code: string } }; canScan: boolean; canEdit: boolean; configured: boolean };
 export function ResearchEvidencePanel({ features, title = "Research and opportunities" }: { features: ResearchFeature[]; title?: string }) {
   const { activeDomain } = useDomain();
-  const [feature, setFeature] = useState<ResearchFeature>(features[0]!);
+  const params = useSearchParams(), pathname = usePathname(), router = useRouter();
+  const requested = params.get("feature") as ResearchFeature;
+  const feature = features.includes(requested) ? requested : features[0]!;
+  function setFeature(next: ResearchFeature) {
+    const query = new URLSearchParams(params); query.set("feature", next);
+    router.push(`${pathname}?${query}#research`, { scroll: false });
+  }
   if (!activeDomain) return null;
-  return <section id="research" className="min-w-0 scroll-mt-6"><div className="mb-3 flex flex-wrap items-center justify-between gap-3"><h2 className="text-base font-bold text-ink">{title}</h2><nav aria-label={title} className="flex flex-wrap gap-1">{features.map((id) => <button key={id} onClick={() => setFeature(id)} aria-pressed={feature === id} className={`min-h-9 rounded-full border px-3 py-1 text-xs font-semibold ${feature === id ? "border-purple/30 bg-purple/10 text-purple" : "border-border bg-card text-muted"}`}>{researchFeature(id)?.title}</button>)}</nav></div><ResearchTool key={`${activeDomain.id}:${feature}`} site={activeDomain.id} siteName={activeDomain.name} siteHost={activeDomain.host} feature={feature} /></section>;
+  return <section id="research" className="min-w-0 scroll-mt-6">{features.length > 1 && <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><h2 className="text-base font-bold text-ink">{title}</h2><nav aria-label={title} className="flex flex-wrap gap-1">{features.map((id) => <button key={id} onClick={() => setFeature(id)} aria-pressed={feature === id} className={`min-h-9 rounded-full border px-3 py-1 text-xs font-semibold ${feature === id ? "border-purple/30 bg-purple/10 text-purple" : "border-border bg-card text-muted"}`}>{researchFeature(id)?.title}</button>)}</nav></div>}<ResearchTool key={`${activeDomain.id}:${feature}`} site={activeDomain.id} siteName={activeDomain.name} siteHost={activeDomain.host} feature={feature} /></section>;
 }
 
 function ResearchTool({ site, siteName, siteHost, feature }: { site: string; siteName: string; siteHost: string; feature: ResearchFeature }) {
@@ -48,7 +55,7 @@ function ResearchTool({ site, siteName, siteHost, feature }: { site: string; sit
   function work(row: EvidenceRow, table: EvidenceTable) {
     if (!run) return;
     const ownUrl = safeEvidenceUrl(row.url), isOwn = ownUrl && (new URL(ownUrl).hostname.replace(/^www\./, "") === siteHost.replace(/^www\./, ""));
-    setFinding({ key: `research:${feature}:${table.title}:${row.label}`.slice(0, 230), title: `${feature === "recovery" ? "Recover links to" : feature === "reviews" ? "Review customer feedback:" : "Plan improvement:"} ${row.label}`.slice(0, 200), module: info.title, executionType: feature === "recovery" ? "technical_task" : feature === "links" ? "link_prospect_list" : feature === "clusters" ? "keyword_page_map" : "content_brief", priorityScore: feature === "recovery" ? 80 : 65, pageMode: isOwn ? "existing_page" : "site_wide", targetUrl: isOwn ? ownUrl : null, targetKeywords: row.keywords, sourceUrl: `${info.home}?site=${encodeURIComponent(site)}#research`, evidenceLabel: `DataForSEO · ${stamp(run.updatedAt)}`, sourceEvidence: { provider: "DataForSEO", feature, collectedAt: run.updatedAt, market: run.payload.market, row, caveat: table.note } });
+    setFinding({ key: `research:${feature}:${table.title}:${row.label}`.slice(0, 230), title: `${feature === "recovery" ? "Recover links to" : feature === "reviews" ? "Review customer feedback:" : "Plan improvement:"} ${row.label}`.slice(0, 200), module: info.title, executionType: feature === "recovery" ? "technical_task" : feature === "links" ? "link_prospect_list" : feature === "clusters" ? "keyword_page_map" : "content_brief", priorityScore: feature === "recovery" ? 80 : 65, pageMode: isOwn ? "existing_page" : "site_wide", targetUrl: isOwn ? ownUrl : null, targetKeywords: row.keywords, sourceUrl: `${info.home}?site=${encodeURIComponent(site)}&feature=${feature}#research`, evidenceLabel: `DataForSEO · ${stamp(run.updatedAt)}`, sourceEvidence: { provider: "DataForSEO", feature, collectedAt: run.updatedAt, market: run.payload.market, row, caveat: table.note } });
   }
   const report = run?.payload.report;
   return <><Panel title={info.title} description={info.description} actions={<div className="flex gap-2"><Button size="sm" aria-label="Reload saved research" disabled={state.loading} onClick={refresh}><RefreshCw className="h-3.5 w-3.5" /></Button><Button size="sm" variant="primary" disabled={!state.data?.canScan || !!pending} onClick={configure}>{pending ? "Collection active" : "Collect evidence"}</Button></div>}>

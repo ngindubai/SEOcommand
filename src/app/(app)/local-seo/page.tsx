@@ -103,7 +103,7 @@ export default function LocalSeoPage() {
   return <div className="animate-in space-y-5">
     <PageHeader title="Local SEO" description="Google Business Profile evidence, review movement and geographic Maps visibility." actions={<Button variant="primary" onClick={() => setOpen(true)}><Plus className="h-4 w-4" />Add location</Button>} />
       <ResearchEvidencePanel features={["reviews"]} />
-    <BusinessManager />
+    <section id="business-management" className="scroll-mt-6"><BusinessManager /></section>
     {notice && <div role="status" className="rounded-md border border-success/20 bg-success/5 p-3 text-xs font-semibold text-success">{notice}</div>}
     {error && <div role="alert" className="rounded-md border border-critical/20 bg-critical/5 p-3 text-xs text-critical">{error}</div>}
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

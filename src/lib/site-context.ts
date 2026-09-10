@@ -6,6 +6,7 @@
 const SITE_CONTEXT_ROUTES = [
   "/domain",
   "/pages",
+  "/questions",
   "/health",
   "/rankings",
   "/keyword-strategy",
@@ -66,7 +67,7 @@ export function hrefWithScope(href: string, scope: string): string {
     if (!["/portfolio", "/action-centre", "/work", "/outcomes", "/notifications", "/performance"].includes(url.pathname)) return href;
     url.searchParams.set("scope", scope);
   } else {
-    if (!requiresSiteContext(url.pathname) && !["/portfolio", "/research", "/reports", "/performance", "/action-centre", "/ai-visibility", "/work", "/outcomes", "/notifications", "/performance"].includes(url.pathname)) return href;
+    if (!requiresSiteContext(url.pathname) && !["/portfolio", "/research", "/keyword-research", "/domain-research", "/reports", "/performance", "/action-centre", "/ai-visibility", "/work", "/outcomes", "/notifications", "/performance"].includes(url.pathname)) return href;
     url.searchParams.set("site", scope);
   }
   return `${url.pathname}${url.search}${url.hash}`;

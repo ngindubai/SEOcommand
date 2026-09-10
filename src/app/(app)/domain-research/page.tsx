@@ -43,7 +43,7 @@ const KEYWORD_COLUMNS: Column<KeywordRow>[] = [
 ];
 
 export default function DomainResearchPage() {
-  const { sites } = useDomain();
+  const { sites, activeDomain } = useDomain();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [saved, setSaved] = useState<DomainEvidence[]>([]);
@@ -59,6 +59,7 @@ export default function DomainResearchPage() {
   const [loadingEvidence, setLoadingEvidence] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mappingSite, setMappingSite] = useState("");
+  useEffect(() => { setMappingSite(activeDomain?.id ?? ""); }, [activeDomain?.id]);
   const [mappingTitle, setMappingTitle] = useState("");
   const [mappingNotes, setMappingNotes] = useState("");
   const [priorityScore, setPriorityScore] = useState(70);
@@ -89,7 +90,7 @@ export default function DomainResearchPage() {
       const evidence = body.evidence as DomainEvidence;
       setActive(evidence); setTargetHost(evidence.sourceValue); setMappingTitle(`Investigate ${evidence.sourceValue} opportunity`); setTargetKeywords((evidence.evidence?.keywords ?? []).slice(0, 5).map((item) => item.keyword).join("\n"));
       await loadMappings(evidence.id);
-      if (updateUrl) router.replace(`/domain-research?evidence=${encodeURIComponent(evidence.id)}`);
+      if (updateUrl) { const next = new URLSearchParams(window.location.search); next.set("evidence", evidence.id); router.replace(`/domain-research?${next}`); }
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Research evidence could not be opened."); }
     finally { setLoadingEvidence(false); }
   }, [loadMappings, router]);
@@ -127,7 +128,7 @@ export default function DomainResearchPage() {
       if (!response.ok || !body.evidence) throw new Error(body.error ?? "Domain research failed.");
       const evidence = body.evidence as DomainEvidence;
       setActive(evidence); setSaved((current) => [evidence, ...current.filter((item) => item.id !== evidence.id)]); setMappings([]); setMappingTitle(`Investigate ${evidence.sourceValue} opportunity`); setTargetKeywords((evidence.evidence?.keywords ?? []).slice(0, 5).map((item) => item.keyword).join("\n"));
-      router.replace(`/domain-research?evidence=${encodeURIComponent(evidence.id)}`);
+      const next = new URLSearchParams(searchParams); next.set("evidence", evidence.id); router.replace(`/domain-research?${next}`);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Domain research failed."); }
     finally { setRunning(false); }
   }

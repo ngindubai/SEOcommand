@@ -36,7 +36,7 @@ describe("persistent website navigation", () => {
 
   it("keeps a website through tools, dashboard, tasks, reports and refresh", () => {
     let current = visit("/sites/alpha", null);
-    for (const destination of ["/rankings", "/portfolio", "/action-centre", "/reports", "/ai-visibility"]) {
+    for (const destination of ["/rankings", "/portfolio", "/action-centre", "/reports", "/ai-visibility", "/keyword-research", "/domain-research", "/questions"]) {
       current = visit(destination, current.scope);
       expect(current).toEqual({ scope: "alpha", href: `${destination}?site=alpha` });
       expect(visit(current.href, null)).toEqual(current);
@@ -44,7 +44,7 @@ describe("persistent website navigation", () => {
   });
 
   it("retains selection when visiting shared pages and independent research", () => {
-    for (const destination of ["/settings#connections", "/sites", "/keyword-research?view=projects", "/research?workspace=global"]) {
+    for (const destination of ["/settings#connections", "/sites", "/keyword-research?view=projects&workspace=global", "/research?workspace=global"]) {
       const current = visit(destination, "alpha");
       expect(current).toEqual({ scope: "alpha", href: destination });
       expect(visit("/backlinks", current.scope).href).toBe("/backlinks?site=alpha");

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { BarChart3, ChevronRight, Download, FolderKanban, Globe2, History, Layers3, Loader2, MapPin, Plus, Radar, ScanSearch, Search, Sparkles, Target, X } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { Button, Card, EmptyState, Skeleton, StatusBadge } from "@/components/ui/primitives";
@@ -36,9 +36,11 @@ function difficultyTone(value: number | null): "success" | "warning" | "critical
 function mean(values: number[]) { return values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0; }
 
 export default function KeywordResearchPage() {
-  const { sites } = useDomain();
+  const { sites, activeDomain } = useDomain();
+  const router = useRouter();
   const searchParams = useSearchParams();
-  const [view, setView] = useState<View>("discover");
+  const view = (["projects", "saved", "tracking"].includes(searchParams.get("view") ?? "") ? searchParams.get("view") : "discover") as View;
+  function setView(next: View) { const query = new URLSearchParams(searchParams); query.set("view", next); router.push(`/keyword-research?${query}`, { scroll: false }); }
   const [sourceType, setSourceType] = useState("seed");
   const [seed, setSeed] = useState("");
   const [depth, setDepth] = useState(100);
@@ -85,10 +87,7 @@ export default function KeywordResearchPage() {
     finally { setScansLoading(false); }
   }, [trackingSiteId]);
   useEffect(() => { void loadWorkspace(); }, [loadWorkspace]);
-  useEffect(() => {
-    const requested = searchParams.get("view");
-    if (requested === "projects" || requested === "saved" || requested === "tracking" || requested === "discover") setView(requested);
-  }, [searchParams]);
+  useEffect(() => { setTrackingSiteId(activeDomain?.id ?? ""); }, [activeDomain?.id]);
   useEffect(() => {
     const timer = window.setTimeout(async () => {
       const response = await fetch(`/api/locations?q=${encodeURIComponent(locationQuery)}&limit=40`).catch(() => null);

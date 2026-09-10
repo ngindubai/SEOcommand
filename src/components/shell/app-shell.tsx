@@ -40,9 +40,10 @@ function SiteContextBoundary({ children }: { children: React.ReactNode }) {
       {sites.length > 0 && (
         <div className="mx-auto grid max-w-3xl gap-2 sm:grid-cols-2">
           {sites.map((site) => {
+            const next = new URLSearchParams(searchParams); next.delete("scope"); next.set("site", site.id);
             const href = pathname.startsWith("/sites/")
               ? `/sites/${encodeURIComponent(site.id)}`
-              : `${pathname}?site=${encodeURIComponent(site.id)}`;
+              : `${pathname}?${next}`;
             return <Link key={site.id} href={href} className="flex items-center gap-3 rounded-lg border border-border bg-card p-4 shadow-card transition-colors hover:border-purple/35"><span className="h-3 w-3 rounded-full" style={{ background: site.accent }} /><span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold text-ink">{site.name}</span><span className="block truncate text-2xs text-muted">{site.host}</span></span><ArrowRight className="h-4 w-4 text-muted" /></Link>;
           })}
         </div>

@@ -1,7 +1,8 @@
 "use client";
 
 import { SyncBadge } from "./sync-badge";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { workspaceSection } from "@/lib/nav";
 
 const MODULES = [
   { match: ["/keyword", "/rankings", "/research"], label: "Search intelligence", color: "#335CFF" },
@@ -29,11 +30,13 @@ export function PageHeader({
   actions?: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const params = useSearchParams();
+  const section = workspaceSection(pathname, new URLSearchParams(params));
   const moduleStyle = MODULES.find((item) => item.match.some((prefix) => pathname.startsWith(prefix)));
   return (
     <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
       <div>
-        {moduleStyle && <div className="mb-2 flex items-center gap-2 text-[12px] font-bold uppercase tracking-[0.15em] text-muted"><span className="h-2 w-2 rounded-full" style={{ background: moduleStyle.color }} />{moduleStyle.label}</div>}
+        {moduleStyle && <div className="mb-2 flex items-center gap-2 text-[12px] font-bold uppercase tracking-[0.15em] text-muted"><span className="h-2 w-2 rounded-full" style={{ background: moduleStyle.color }} />{section?.label ?? moduleStyle.label}</div>}
         <div className="flex flex-wrap items-center gap-2.5">
           <h1 className="text-balance text-2xl font-extrabold tracking-[-0.035em] text-ink sm:text-[28px]">{title}</h1>
           {lastSync !== undefined && <SyncBadge lastSync={lastSync} loading={loading} />}

@@ -8,7 +8,7 @@ export const RESEARCH_FEATURES = [
   { id: "demand", title: "Estimated AI search demand", home: "/ai-visibility", description: "Modelled demand and monthly trends. These are estimates derived from search questions.", input: "keywords" },
   { id: "trends", title: "Trends and seasonality", home: "/performance", description: "Compare relative search interest across two years; review changes alongside Search Console.", input: "keywords" },
   { id: "recovery", title: "Recover links to broken pages", home: "/backlinks", description: "Find your pages with incoming links and provider-reported errors. Verify before redirecting.", input: "none" },
-  { id: "questions", title: "Customer questions", home: "/content", description: "Questions and answer sources appearing in Google's People Also Ask results.", input: "keywords" },
+  { id: "questions", title: "Customer questions", home: "/questions", description: "Questions and answer sources appearing in Google's People Also Ask results.", input: "keywords" },
   { id: "reviews", title: "Customer review analysis", home: "/local-seo", description: "Review text, ratings, owner replies and evidence-backed themes for a selected business.", input: "business" },
 ] as const;
 export type ResearchFeature = typeof RESEARCH_FEATURES[number]["id"];

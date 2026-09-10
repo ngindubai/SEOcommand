@@ -1,5 +1,5 @@
 "use client";
-import { ResearchEvidencePanel } from "@/components/research/evidence-panel";
+import Link from "next/link";
 
 import { useMemo, useState } from "react";
 import { FileText, TrendingDown, TrendingUp, ExternalLink, BarChart3, ListTodo } from "lucide-react";
@@ -213,7 +213,7 @@ export default function ContentIntelligencePage() {
       />
 
       <ScopeNote isPortfolio={isPortfolio} noun="content data" />
-      <ResearchEvidencePanel features={["questions"]} />
+      <div id="research" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-3 text-sm"><span className="text-muted">Looking for customer questions to turn into content?</span><Link href={`/questions?site=${domain.id}`} className="font-semibold text-purple hover:underline">Open question research →</Link></div>
 
       {loading && !bundle ? (
         <>

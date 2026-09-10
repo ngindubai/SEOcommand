@@ -88,7 +88,7 @@ export default function AiVisibilityPage() {
 
       <ObservationDrawer observation={selected} onClose={() => setSelected(null)} />
       <ResearchEvidencePanel features={["mentions", "demand"]} />
-      <AiComparison />
+      <section id="platform-comparison" className="scroll-mt-6"><AiComparison /></section>
     </div>
   );
 }
