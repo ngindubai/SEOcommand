@@ -1,8 +1,9 @@
+import { mailConfigured, sendMail } from "@/providers/google/mail";
 import { createHmac } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { getManagedSite } from "./site-store";
-import { fetchPublic } from "./public-network";
+import { fetchPublic, readBoundedText } from "./public-network";
 
 export const LINK_QUALITY_THRESHOLDS = {
   minimum: { relevance: 60, authority: 20, competitorMatches: 1 },
@@ -52,13 +53,13 @@ export async function enrichProspectContacts(prospectId: string) {
   const contacts: Array<Record<string, unknown>> = [];
   try {
     const response = await fetchPublic(home, { headers: { "user-agent": "OrwellSEOCommand/2.0 (+link prospect research)" }, signal: AbortSignal.timeout(12_000) });
-    const html = response.ok ? (await response.text()).slice(0, 2_000_000) : "";
+    const html = response.ok ? await readBoundedText(response) : "";
     for (const email of extractEmails(html)) contacts.push({ type: "email", value: email, source: response.url });
     for (const contactUrl of extractContactUrls(html, response.url)) {
       if (contacts.filter((item) => item.type === "email").length >= 5) break;
       try {
         const contactResponse = await fetchPublic(contactUrl, { headers: { "user-agent": "OrwellSEOCommand/2.0 (+link prospect research)" }, signal: AbortSignal.timeout(10_000) });
-        const contactHtml = contactResponse.ok ? (await contactResponse.text()).slice(0, 1_000_000) : "";
+        const contactHtml = contactResponse.ok ? await readBoundedText(contactResponse, 1_000_000) : "";
         for (const email of extractEmails(contactHtml)) contacts.push({ type: "email", value: email, source: contactResponse.url });
         contacts.push({ type: "contact_page", value: contactResponse.url, source: contactResponse.url });
       } catch {
@@ -120,9 +121,9 @@ export async function sendApprovedOutreach(id: string) {
   if (!approved) throw new Error("This message must be approved before it can be sent.");
   if (!approved.recipientEmail) throw new Error("Add a verified recipient email before sending.");
   const webhook = process.env.OUTREACH_EMAIL_WEBHOOK_URL;
-  if (!webhook) throw new Error("Outreach delivery is not configured.");
-  const url = new URL(webhook);
-  if (process.env.NODE_ENV === "production" && url.protocol !== "https:") throw new Error("Outreach webhook must use HTTPS.");
+  if (!webhook && !mailConfigured()) throw new Error("Connect a Gmail mailbox or an outreach delivery service.");
+  const url = webhook ? new URL(webhook) : null;
+  if (process.env.NODE_ENV === "production" && url && url.protocol !== "https:") throw new Error("Outreach webhook must use HTTPS.");
   const [draft] = await db().update(schema.outreachDrafts).set({ status: "sending", updatedAt: new Date() })
     .where(and(eq(schema.outreachDrafts.id, id), eq(schema.outreachDrafts.status, "approved"))).returning();
   if (!draft) throw new Error("This message is already being sent.");
@@ -135,15 +136,15 @@ export async function sendApprovedOutreach(id: string) {
     headers["x-orwell-signature"] = `sha256=${createHmac("sha256", process.env.OUTREACH_WEBHOOK_SECRET).update(payload).digest("hex")}`;
   }
   try {
-    const response = await fetch(url, { method: "POST", headers, body: payload, signal: AbortSignal.timeout(15_000) });
-    if (!response.ok) throw new Error(`Delivery provider returned HTTP ${response.status}.`);
-    const delivery = await response.json().catch(() => ({})) as Record<string, unknown>;
+    let delivery: Record<string, unknown>;
+    if (url) { const response = await fetch(url, { method: "POST", headers, body: payload, signal: AbortSignal.timeout(15_000) }); if (!response.ok) throw new Error(`Delivery provider returned HTTP ${response.status}.`); delivery = await response.json().catch(() => ({})); }
+    else delivery = await sendMail({ id: draft.id, to: [draft.recipientEmail!], subject: draft.subject, text: draft.body });
     await db().update(schema.outreachDrafts).set({ status: "sent", sentAt: new Date(), delivery, updatedAt: new Date() }).where(eq(schema.outreachDrafts.id, id));
     await db().update(schema.linkProspects).set({ status: "contacted", updatedAt: new Date() }).where(eq(schema.linkProspects.id, draft.prospectId));
     return { ok: true, delivery };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await db().update(schema.outreachDrafts).set({ status: "approved", delivery: { error: message }, updatedAt: new Date() }).where(eq(schema.outreachDrafts.id, id));
+    await db().update(schema.outreachDrafts).set({ status: "delivery_uncertain", delivery: { error: message }, updatedAt: new Date() }).where(eq(schema.outreachDrafts.id, id));
     throw error;
   }
 }

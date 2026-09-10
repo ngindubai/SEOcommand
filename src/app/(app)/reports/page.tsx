@@ -1,4 +1,5 @@
 "use client";
+import { ReportArchive } from "@/components/reports/report-archive";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -456,6 +457,7 @@ export default function ReportsPage() {
         actions={<details className="relative"><summary className="cursor-pointer rounded-md border border-border px-3 py-2 text-xs font-semibold">Report options</summary><div className="mt-2 flex flex-wrap items-center gap-2"><select aria-label="Report coverage" value={scopeType} onChange={(event) => { const next = event.target.value as typeof scopeType; setScopeType(next); setScopeId(next === "site" ? activeDomain?.id ?? "" : ""); }} className="h-9 rounded-md border border-border bg-card px-3 text-xs font-bold text-ink"><option value="portfolio">Portfolio</option><option value="group">Folder</option><option value="site">Website</option><option value="campaign" disabled={!activeDomain}>Campaign</option></select>{scopeType !== "portfolio" && <select aria-label="Report website, folder or campaign" value={scopeId} onChange={(event) => setScopeId(event.target.value)} className="h-9 max-w-56 rounded-md border border-border bg-card px-3 text-xs font-bold text-ink"><option value="">Choose {scopeType === "group" ? "a folder" : scopeType === "site" ? "a website" : "a campaign"}</option>{(scopeType === "group" ? groups : scopeType === "site" ? sites : campaignOptions).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}</div></details>}
       />
 
+      <ReportArchive />
       <Card className="relative overflow-hidden border-0 bg-[#11182B] text-white">
         <div className="absolute inset-y-0 left-0 w-1.5" style={{ background: `linear-gradient(180deg, ${reportSite?.accent ?? "#335CFF"}, #12B8C4)` }} />
         <div className="grid gap-7 p-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-center lg:p-8">

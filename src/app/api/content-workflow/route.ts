@@ -57,7 +57,7 @@ export async function PATCH(request: Request) {
   if (parsed.data.action === "advance") {
     const currentStage = CONTENT_STAGES.includes(data.contentStage as typeof CONTENT_STAGES[number]) ? data.contentStage as typeof CONTENT_STAGES[number] : "brief";
     if (CONTENT_STAGES.indexOf(parsed.data.stage) !== CONTENT_STAGES.indexOf(currentStage) + 1) return NextResponse.json({ error: "Move content through each editorial stage in order." }, { status: 409 });
-    if (parsed.data.stage === "review" && !parsed.data.draftUrl?.trim()) return NextResponse.json({ error: "Add the draft URL before review." }, { status: 400 });
+    if (parsed.data.stage === "review" && !parsed.data.draftUrl?.trim() && !(data.editor as { text?: string } | undefined)?.text?.trim()) return NextResponse.json({ error: "Save an internal draft or add a draft URL before review." }, { status: 400 });
     if (parsed.data.stage === "published" && !parsed.data.publishedUrl?.trim()) return NextResponse.json({ error: "Add the live published URL." }, { status: 400 });
     const nextData = { ...data, contentStage: parsed.data.stage, draftUrl: parsed.data.draftUrl ?? data.draftUrl ?? null, publishedUrl: parsed.data.publishedUrl ?? data.publishedUrl ?? null };
     const [updated] = await db().update(schema.workflowItems).set({ executionData: nextData, targetUrl: parsed.data.stage === "published" && parsed.data.publishedUrl ? parsed.data.publishedUrl : current.targetUrl, updatedAt: new Date() }).where(eq(schema.workflowItems.id, current.id)).returning();

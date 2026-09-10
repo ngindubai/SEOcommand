@@ -4,6 +4,7 @@ import { hasDatabase } from "@/sync/store";
 import { currentMonth } from "@/providers/dataforseo/cost";
 import { BudgetExceededError } from "@/providers/dataforseo/errors";
 import type { SpendCategory } from "./types";
+import { uncertainResearchSpend } from "@/providers/dataforseo/reservations";
 
 const ENDPOINT_CATEGORY: Record<string, SpendCategory> = {
   serpOrganicLive: "rankings",
@@ -24,6 +25,13 @@ const ENDPOINT_CATEGORY: Record<string, SpendCategory> = {
   googleAiModeLive: "ai",
   businessGoogleMyBusinessInfoLive: "local_seo",
   serpGoogleMapsLiveAdvanced: "local_seo",
+  labsHistoricalRankOverview: "competitors",
+  searchTrends: "competitors",
+  backlinksBrokenPages: "backlinks",
+  researchSerp: "rankings",
+  aiMentions: "ai",
+  aiKeywordDemand: "ai",
+  googleReviews: "local_seo",
 };
 
 export function spendCategoryForEndpoint(endpoint: string): SpendCategory | null {
@@ -39,6 +47,7 @@ export async function assertSiteSpendAllowed(
   siteSlug: string | null | undefined,
   endpoint: string,
   estimateUsd: number,
+  excludeRequestId?: string,
 ) {
   if (!siteSlug || !hasDatabase()) return;
   const [site] = await db()
@@ -66,7 +75,7 @@ export async function assertSiteSpendAllowed(
         eq(schema.providerSpend.month, month),
       ),
     );
-  const spent = Number(usage?.spent ?? 0);
+  const spent = Number(usage?.spent ?? 0) + await uncertainResearchSpend(month, { site: siteSlug, excludeId: excludeRequestId });
   if (spent + estimateUsd > ceiling) {
     throw new BudgetExceededError(spent, ceiling, `${endpoint} (site ceiling)`);
   }
@@ -85,7 +94,7 @@ export async function assertSiteSpendAllowed(
         eq(schema.providerSpend.month, month),
         inArray(schema.providerSpend.endpoint, categoryEndpoints),
       ));
-    const categorySpent = Number(categoryUsage?.spent ?? 0);
+    const categorySpent = Number(categoryUsage?.spent ?? 0) + await uncertainResearchSpend(month, { site: siteSlug, endpoints: categoryEndpoints, excludeId: excludeRequestId });
     if (categorySpent + estimateUsd > categoryCeiling) {
       throw new BudgetExceededError(categorySpent, categoryCeiling, `${endpoint} (${category} ceiling)`);
     }

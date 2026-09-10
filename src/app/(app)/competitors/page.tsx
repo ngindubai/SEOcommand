@@ -1,4 +1,5 @@
 "use client";
+import { ResearchEvidencePanel } from "@/components/research/evidence-panel";
 
 import { useEffect, useMemo, useState } from "react";
 import { ArrowRight, Building2, ExternalLink, Search, Swords } from "lucide-react";
@@ -74,6 +75,7 @@ export default function CompetitorsPage() {
 
   return <div className="animate-in space-y-5">
     <PageHeader title="Competitor explorer" description={`Reverse-engineer any competitor against ${domain.name}'s approved market and budget.`} />
+      <ResearchEvidencePanel features={["footprint", "history"]} />
     <Card className="overflow-hidden">
       <div className="grid lg:grid-cols-[1fr_auto]">
         <div className="p-5"><div className="text-2xs font-medium uppercase tracking-wide text-muted">Competitor domain</div><div className="mt-2 flex gap-2"><div className="relative flex-1"><Search className="absolute left-3 top-2.5 h-4 w-4 text-muted" /><input aria-label="Competitor domain" value={target} onChange={(event) => setTarget(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void explore()} placeholder="competitor.com" className="h-9 w-full rounded-md border border-border bg-card pl-9 pr-3 text-sm outline-none focus:border-purple" /></div><Button variant="primary" onClick={explore} disabled={busy || !target.trim()}>{busy ? "Scanning…" : "Explore"}<ArrowRight className="h-4 w-4" /></Button></div>{error && <div role="alert" className="mt-2"><EvidenceMessage detail={error} /><Button size="sm" onClick={() => setHistoryRevision((value) => value + 1)}>Retry saved history</Button></div>}<p className="mt-2 text-2xs text-muted">Estimated new scan cost ≤ ${DOMAIN_RESEARCH_ESTIMATE_USD.toFixed(2)}. Four DataForSEO datasets; reopening saved results is free. A new scan, including a retry, can incur provider costs.</p></div>

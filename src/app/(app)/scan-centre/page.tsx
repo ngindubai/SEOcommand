@@ -1,4 +1,5 @@
 "use client";
+import { ResearchDirectory } from "@/components/research/evidence-panel";
 
 import Link from "next/link";
 import { EvidenceMessage } from "@/components/ui/evidence-message";
@@ -106,6 +107,7 @@ export default function ScanCentrePage() {
 
   return <div>
     <PageHeader title="Scan Centre" description="Choose what to update. Review the cost, follow progress and open saved results." actions={<Button onClick={() => void load()} disabled={loading}>Reload saved status</Button>} />
+    <ResearchDirectory />
     <Card className="mb-5 flex flex-wrap items-center justify-between gap-3 p-4"><div><h2 className="text-lg font-bold">Scan modules</h2><p className="text-sm text-muted">{selected.length} selected · estimated {money(estimate)}</p></div><Button variant="primary" disabled={loading || !data || running || !selected.length} onClick={() => setReviewing(true)}>Review scan</Button></Card>
     {reviewing && <Card className="mb-5 space-y-3 p-5"><h2 className="text-lg font-bold">Review scan for {data?.site.name}</h2><p className="text-sm">{data?.modules.filter((module) => selected.includes(module.id)).map((module) => module.label).join(", ")}</p><p className="text-lg font-bold">Estimated {money(estimate)}</p><p className="text-sm text-muted">Only the selected modules will run. Estimates vary with website size; existing website and portfolio spending limits apply.</p><div className="flex gap-3"><Button variant="primary" disabled={blocked || running} onClick={() => void run()}>{running ? "Queuing…" : "Start selected scan"}</Button><Button onClick={() => setReviewing(false)}>Close review</Button></div></Card>}
     {error && <div className="mb-5 flex items-start gap-2 rounded-lg border border-critical/25 bg-critical/5 px-4 py-3 text-sm text-critical"><X className="mt-0.5 h-4 w-4 shrink-0" /><EvidenceMessage detail={error} /></div>}

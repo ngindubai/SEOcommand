@@ -1,0 +1,61 @@
+import { safeEvidenceUrl, trendSummary, type EvidenceReport, type EvidenceRow, type EvidenceSeries, type ResearchUnit } from "@/lib/research-evidence";
+
+type Obj = Record<string, unknown>;
+const obj = (v: unknown): Obj => v !== null && typeof v === "object" && !Array.isArray(v) ? v as Obj : {};
+const list = (v: unknown): Obj[] => Array.isArray(v) ? v.map(obj) : [];
+const str = (v: unknown) => typeof v === "string" ? v : "";
+const num = (v: unknown): number | null => typeof v === "number" && Number.isFinite(v) ? v : null;
+const period = (v: Obj) => num(v.year) && num(v.month) ? `${v.year}-${String(v.month).padStart(2, "0")}-01` : "";
+const sum = (...values: unknown[]) => values.every((v) => num(v) != null) ? values.reduce<number>((total, v) => total + (v as number), 0) : null;
+
+/** Preserve missing values and provider evidence; no synthetic rankings, traffic or review scores. */
+export function normalizeResearch(unit: ResearchUnit, raw: Obj[], now = new Date()): EvidenceReport {
+  const root = raw[0] ?? {}, items = raw.flatMap((row) => list(row.items));
+  const report: EvidenceReport = { tables: [], series: [], notes: [] };
+  const table = (title: string, columns: string[], rows: EvidenceRow[], note?: string) => report.tables.push({ title, columns, rows, total: num(root.total_count), note });
+  if (unit.endpoint === "labsRankedKeywords") {
+    table(`${unit.label}: ranking keywords`, ["Position", "Google monthly searches", "Difficulty", "Estimated traffic"], items.map((item, i) => {
+      const data = obj(item.keyword_data), info = obj(data.keyword_info), ranking = obj(obj(item.ranked_serp_element).serp_item), keyword = str(data.keyword);
+      return { id: `${i}`, label: keyword, keywords: keyword ? [keyword] : [], url: safeEvidenceUrl(ranking.url), values: { Position: num(ranking.rank_group), "Google monthly searches": num(info.search_volume), Difficulty: num(obj(data.keyword_properties).keyword_difficulty), "Estimated traffic": num(ranking.etv) }, evidence: { updatedAt: info.last_updated_time, rankingUpdatedAt: obj(data.serp_info).last_updated_time } };
+    }), "Provider database sample. Positions and estimated traffic are not Search Console measurements.");
+  } else if (unit.endpoint === "labsRelevantPages") {
+    table(`${unit.label}: leading pages`, ["Ranking keywords", "Estimated traffic", "Top 10 keywords"], items.map((item, i) => { const metrics = obj(obj(item.metrics).organic); return { id: `${i}`, label: str(item.page_address), url: safeEvidenceUrl(item.page_address), values: { "Ranking keywords": num(metrics.count), "Estimated traffic": num(metrics.etv), "Top 10 keywords": sum(metrics.pos_1, metrics.pos_2_3, metrics.pos_4_10) } }; }), "Estimated monthly organic traffic from the provider's keyword index.");
+  } else if (unit.endpoint === "labsHistoricalRankOverview") {
+    const rows = items.map((item) => { const m = obj(obj(item.metrics).organic); return { id: period(item), label: period(item).slice(0, 7), values: { "Estimated traffic": num(m.etv), "Ranking keywords": num(m.count), "Top 3": sum(m.pos_1, m.pos_2_3), "Top 10": sum(m.pos_1, m.pos_2_3, m.pos_4_10) } }; }).filter((row) => row.id).sort((a, b) => a.id.localeCompare(b.id));
+    table(`${unit.label}: monthly history`, ["Estimated traffic", "Ranking keywords", "Top 3", "Top 10"], rows, "Historical provider estimates. These are not competitors' actual analytics.");
+    report.series.push({ label: unit.label, unit: "Estimated organic visits", points: rows.map((row) => ({ date: row.id, value: row.values["Estimated traffic"] })) });
+  } else if (unit.endpoint === "backlinksList") {
+    table(`${unit.label}: linking pages`, ["Target page", "Anchor", "Link rank", "Link status", "First seen", "Last seen"], items.map((item, i) => ({ id: `${i}`, label: str(item.url_from), url: safeEvidenceUrl(item.url_from), values: { "Target page": str(item.url_to) || null, Anchor: str(item.anchor) || null, "Link rank": num(item.rank), "Link status": typeof item.is_lost === "boolean" ? item.is_lost ? "Lost" : "Live" : null, "First seen": str(item.first_seen) || null, "Last seen": str(item.last_seen) || null }, evidence: { targetUrl: safeEvidenceUrl(item.url_to), dofollow: item.dofollow, spamScore: item.backlink_spam_score } })), "Up to 1,000 records in this collection; totals may exceed the returned sample. Provider link rank is not Google PageRank.");
+  } else if (unit.endpoint === "backlinksBrokenPages") {
+    table(`${unit.label}: broken destinations`, ["Backlinks", "Referring domains", "Broken pages", "First seen"], items.map((item, i) => ({ id: `${i}`, label: str(item.url), url: safeEvidenceUrl(item.url), values: { Backlinks: num(item.backlinks), "Referring domains": num(item.referring_domains), "Broken pages": num(item.broken_pages), "First seen": str(item.first_seen) || null }, detail: "Provider-reported 4xx/5xx destination. Open the page evidence and verify its current response before choosing a relevant redirect or restoring content.", evidence: { provider: "DataForSEO Backlinks", reportedBrokenPages: item.broken_pages } })), "Only broken destinations returned by the provider are shown. An empty sample is not a full-site clean bill of health.");
+  } else if (unit.endpoint === "aiMentions") {
+    table(`${unit.label}: indexed AI answers`, ["Platform", "Model", "Citations", "Index date"], items.map((item, i) => ({ id: `${i}`, label: str(item.question), detail: str(item.answer), url: safeEvidenceUrl(list(item.sources)[0]?.url), keywords: [str(item.question)].filter(Boolean), values: { Platform: str(item.platform) || null, Model: str(item.model_name) || null, Citations: Array.isArray(item.sources) ? item.sources.length : null, "Index date": str(item.date) || str(item.datetime) || null }, evidence: { sources: list(item.sources).map((s) => ({ title: str(s.title), url: safeEvidenceUrl(s.url) })), model: item.model_name } })), "Indexed responses matching this domain's citations. Coverage is a sample, not total AI usage or a share-of-voice measure.");
+  } else if (unit.endpoint === "aiKeywordDemand") {
+    table("Estimated AI keyword demand", ["Estimated monthly demand"], items.map((item, i) => ({ id: `${i}`, label: str(item.keyword), keywords: [str(item.keyword)].filter(Boolean), values: { "Estimated monthly demand": num(item.ai_search_volume) } })), "DataForSEO models these estimates from People Also Ask statistics. They are not measured searches inside ChatGPT or other AI products.");
+    report.series = items.map((item) => ({ label: str(item.keyword), unit: "Estimated monthly demand", points: list(item.ai_monthly_searches).map((p) => ({ date: period(p), value: num(p.ai_search_volume) })).filter((p) => p.date).sort((a, b) => a.date.localeCompare(b.date)) }));
+  } else if (unit.endpoint === "searchTrends") {
+    for (const graph of items.filter((item) => item.type === "dataforseo_trends_graph")) {
+      const keywords = Array.isArray(graph.keywords) ? graph.keywords : Array.isArray(root.keywords) ? root.keywords : [];
+      for (const [index, keyword] of keywords.entries()) {
+        const series: EvidenceSeries = { label: str(keyword), unit: "Relative interest (0–100)", points: list(graph.data).filter((p) => str(p.date_to) < now.toISOString().slice(0, 10)).map((p) => ({ date: str(p.date_from), value: Array.isArray(p.values) ? num(p.values[index]) : null })).filter((p) => p.date) };
+        report.series.push(series);
+      }
+    }
+    table("Interest and seasonality", ["Latest 4 periods", "Change %", "Highest interest month"], report.series.map(trendSummary), "Country-level relative interest. Values are normalised within each request, so separate batches cannot be compared as absolute demand. Incomplete periods are omitted.");
+  } else if (unit.endpoint === "researchSerp") {
+    const organic = items.filter((item) => item.type === "organic" && num(item.rank_group) != null && Number(item.rank_group) <= 10);
+    table(unit.label, ["Organic position"], organic.map((item, i) => ({ id: `${i}`, label: str(item.title), url: safeEvidenceUrl(item.url), values: { "Organic position": num(item.rank_group) } })));
+    const questions = items.filter((item) => item.type === "people_also_ask").flatMap((item) => list(item.items));
+    table(`${unit.label}: customer questions`, ["Seed keyword", "Answer source"], questions.map((item, i) => { const source = list(item.expanded_element)[0] ?? {}; return { id: `${i}`, label: str(item.title), keywords: [str(item.title)].filter(Boolean), url: safeEvidenceUrl(source.url), detail: str(source.description), values: { "Seed keyword": unit.label, "Answer source": str(source.title) || null }, evidence: { seed: unit.label, question: item.title, sourceUrl: safeEvidenceUrl(source.url) } }; }), "Questions present in this search snapshot. No question volume is inferred from its presence.");
+  } else if (unit.endpoint === "googleReviews") {
+    const reviews = items.filter((item) => item.type === "google_reviews_search" || item.review_text != null || item.rating != null);
+    const rows: EvidenceRow[] = reviews.map((item, i) => ({ id: str(item.review_id) || `${i}`, label: str(item.review_text) || str(item.original_review_text) || "Rating without review text", url: safeEvidenceUrl(item.review_url), detail: str(item.owner_answer), values: { Rating: num(obj(item.rating).value), Date: str(item.timestamp) || null, "Owner reply": typeof item.owner_answer === "string" ? item.owner_answer.trim() ? "Replied" : "No reply in saved data" : "Not supplied" }, evidence: { highlights: list(item.review_highlights), language: item.original_language } }));
+    table(`${unit.label}: recent reviews`, ["Rating", "Date", "Owner reply"], rows, `Sample of up to 100 newest reviews; ${num(root.reviews_count) ?? "unknown"} total reviews reported. The sample average is not the business's overall rating.`);
+    const themes = new Map<string, EvidenceRow[]>();
+    const rules = [["Service", /\b(service|staff|helpful|rude|friendly|support)\b/i], ["Speed and reliability", /\b(late|delay|wait|punctual|reliable|cancel)\b/i], ["Price and value", /\b(price|cost|expensive|value|cheap|refund)\b/i], ["Quality", /\b(quality|clean|dirty|broken|excellent)\b/i], ["Booking and communication", /\b(book|booking|communication|reply|phone|email)\b/i]] as const;
+    for (const row of rows) for (const [label, rule] of rules) if (rule.test(row.label)) themes.set(label, [...(themes.get(label) ?? []), row]);
+    table("Suggested review themes", ["Reviews in sample", "Low ratings (1–2)", "Missing replies"], [...themes].map(([label, matching]) => ({ id: label, label, values: { "Reviews in sample": matching.length, "Low ratings (1–2)": matching.filter((r) => typeof r.values.Rating === "number" && r.values.Rating <= 2).length, "Missing replies": matching.filter((r) => r.values["Owner reply"] === "No reply in saved data").length }, detail: matching.slice(0, 5).map((r) => r.label).join("\n\n"), evidence: { method: "English keyword rules; suggested themes may overlap and require review", reviewIds: matching.map((r) => r.id) } })), "Suggested themes use transparent English keyword rules, not verified sentiment. Non-English and unmatched reviews remain in the full sample above.");
+    report.notes.push(`${rows.length} saved reviews; ${rows.filter((r) => typeof r.values.Rating === "number" && r.values.Rating <= 2).length} rated 1–2. Reply coverage only counts fields explicitly returned by the provider.`);
+  }
+  return report;
+}

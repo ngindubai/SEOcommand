@@ -27,7 +27,7 @@ export async function proxy(request: NextRequest) {
   if (pathname === "/login" && session) {
     return NextResponse.redirect(new URL("/portfolio", request.url));
   }
-  if (PUBLIC_PATHS.has(pathname)) return NextResponse.next();
+  if (PUBLIC_PATHS.has(pathname) || /^\/api\/reports\/shared\/[A-Za-z0-9_-]{43}$/.test(pathname)) return NextResponse.next();
 
   const isDedicatedQaService = process.env.RENDER_SERVICE_NAME === "orwell-qa-web";
   if (!session && isDedicatedQaService && process.env.QA_SYNTHETIC === "true" && process.env.QA_PUBLIC_ACCESS === "true") {

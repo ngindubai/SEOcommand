@@ -42,7 +42,7 @@ export function discoverAiPromptOpportunities(input: {
       topic: "Keyword demand",
       source: "keyword",
       intent: keyword.intent,
-      aiSearchVolume: keyword.volume,
+      aiSearchVolume: null,
       priorityScore: Math.min(90, Math.round(30 + Math.log10(keyword.volume + 1) * 15 + keyword.trafficPotential / 100)),
       evidence: { keyword: keyword.keyword, volume: keyword.volume, difficulty: keyword.difficulty },
     });

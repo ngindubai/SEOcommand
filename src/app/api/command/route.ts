@@ -31,7 +31,8 @@ export async function GET(request: Request) {
 }
 
 const schema = z.object({
-  action: z.enum(["brand", "business_settings", "speed", "indexing", "business", "watch_add", "watch_remove", "watch_check", "baseline", "compare", "timeline", "plan_preview", "plan_save", "plan_cancel"]),
+  action: z.enum(["brand", "business_settings", "crawl_settings", "speed", "indexing", "business", "watch_add", "watch_remove", "watch_check", "baseline", "compare", "timeline", "plan_preview", "plan_save", "plan_cancel"]),
+  exclusions: z.array(z.string().trim().min(2).max(200).regex(/^\/(?!\/)[^?#*]*$/, "Use a path prefix, e.g. /account; no wildcards." )).max(50).optional(),
   site: z.string().min(1).max(120).optional(), url: z.string().max(2000).optional(), device: z.enum(["mobile", "desktop"]).optional(),
   terms: z.array(z.string().trim().min(1).max(100)).max(30).optional(), businessEvents: z.record(z.string().regex(/^[a-zA-Z][a-zA-Z0-9_]{0,39}$/), z.enum(["enquiry", "booking", "qualified_lead"])).optional(),
   recordKey: z.string().max(240).optional(), title: z.string().trim().min(2).max(200).optional(), date: z.string().datetime({ offset: true }).optional(), type: z.enum(["Content edit", "Technical fix", "Migration", "Campaign", "Other"]).optional(),
@@ -61,11 +62,15 @@ export async function POST(request: Request) {
     }
     const site = input.site && await getManagedSite(input.site);
     if (!site || !await canAccessSite(request, site.id)) return NextResponse.json({ error: "Website access required." }, { status: 403 });
-    const permission = ["speed", "indexing", "business", "watch_check", "plan_cancel"].includes(input.action) ? "run_scans" : input.action === "business_settings" ? "manage_connectors" : "manage_content";
+    const permission = ["speed", "indexing", "business", "watch_check", "plan_cancel"].includes(input.action) ? "run_scans" : ["business_settings", "crawl_settings"].includes(input.action) ? "manage_connectors" : "manage_content";
     if (!await hasPermission(request, permission, site.id)) return NextResponse.json({ error: "Your account cannot make this change for this website." }, { status: 403 });
     const url = input.url ? siteUrl(input.url, site.host) : null;
     if (["speed", "indexing", "watch_add", "watch_remove", "watch_check"].includes(input.action) && !url) return NextResponse.json({ error: "Enter a page URL on the selected website." }, { status: 400 });
     const records = await commandRecords(site.id);
+    if (input.action === "crawl_settings") {
+      await saveCommandRecord(site.id, "settings", "preferences", { crawlExclusions: [...new Set(input.exclusions ?? [])] }, { actor: session.email });
+      return NextResponse.json({ ok: true, message: "Path exclusions saved for future rendered crawls. Existing evidence is retained." });
+    }
     if (input.action === "brand" || input.action === "business_settings") {
       if (input.action === "business_settings" && Object.keys(input.businessEvents ?? {}).length > 20) return NextResponse.json({ error: "Choose at most 20 business events." }, { status: 400 });
       await saveCommandRecord(site.id, "settings", "preferences", { ...(input.action === "brand" ? { brandTerms: input.terms ?? [] } : { businessEvents: input.businessEvents ?? {} }) }, { actor: session.email });

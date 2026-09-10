@@ -1,4 +1,6 @@
 "use client";
+import { TopicPlanner } from "@/components/research/topic-planner";
+import { ResearchEvidencePanel } from "@/components/research/evidence-panel";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { GitMerge, Layers3, RefreshCw, Route, TriangleAlert } from "lucide-react";
@@ -87,6 +89,8 @@ export default function KeywordStrategyPage() {
 
   return <div className="animate-in space-y-5">
     <PageHeader title="Keyword strategy" description={`Turn ${domain.name}'s keyword and Search Console evidence into intent clusters, page ownership and cannibalisation decisions.`} actions={<Button onClick={refresh} disabled={busy}><RefreshCw className={busy ? "h-4 w-4 animate-spin" : "h-4 w-4"} />Rebuild strategy</Button>} />
+      <ResearchEvidencePanel features={["clusters"]} />
+    <TopicPlanner />
     {error && <div role="alert" className="rounded-md border border-critical/20 bg-critical/5 p-3 text-xs text-critical">{error}</div>}
     {strategy ? <>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">

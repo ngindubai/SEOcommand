@@ -1,4 +1,5 @@
 "use client";
+import { OutreachDesk } from "@/components/research/outreach-desk";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, ExternalLink, Link2, Mail, Search, Send, ShieldCheck } from "lucide-react";
@@ -126,6 +127,7 @@ export default function LinkBuildingPage() {
 
   return <div className="animate-in space-y-5">
     <PageHeader title="Link building" description="Find domains linking to competitors, research public contacts and prepare one approval-gated message at a time." />
+    <OutreachDesk />
     {notice && <div role="status" className="rounded-md border border-success/20 bg-success/5 p-3 text-xs font-semibold text-success">{notice}</div>}
     {error && <div role="alert" className="rounded-md border border-critical/20 bg-critical/5 p-3 text-xs text-critical">{error}</div>}
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4"><KpiCard label="Prospects" value={String(data?.summary.prospects ?? 0)} accent /><KpiCard label="Qualified" value={String(data?.summary.qualifiedProspects ?? data?.summary.strongProspects ?? 0)} hint="Fit ≥60 · authority ≥20 · competitor evidence" /><KpiCard label="Awaiting approval" value={String(data?.summary.awaitingApproval ?? 0)} /><KpiCard label="Sent" value={String(data?.summary.sent ?? 0)} /></div>

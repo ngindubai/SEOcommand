@@ -70,3 +70,10 @@ export async function fetchPublic(input: string | URL, init: RequestInit = {}, m
   }
   throw new Error("Too many redirects.");
 }
+
+/** Read a bounded response, cancelling the stream if it exceeds the limit. */
+export async function readBoundedText(response: Response, limit = 2_000_000): Promise<string> {
+  const reader = response.body?.getReader(); const chunks: Uint8Array[] = []; let size = 0;
+  if (reader) try { while (true) { const part = await reader.read(); if (part.done) break; size += part.value.length; if (size > limit) throw new Error("Page exceeds the maximum response size."); chunks.push(part.value); } } finally { await reader.cancel().catch(() => undefined); }
+  return Buffer.concat(chunks).toString("utf8");
+}

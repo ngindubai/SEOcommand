@@ -1,4 +1,5 @@
 "use client";
+import { ResearchEvidencePanel } from "@/components/research/evidence-panel";
 
 import { useMemo, useState } from "react";
 import { ExternalLink, Link2, Network, ShieldAlert } from "lucide-react";
@@ -365,6 +366,7 @@ export default function BacklinksPage() {
       />
 
       <ScopeNote isPortfolio={isPortfolio} noun="backlink data" />
+      <ResearchEvidencePanel features={["links", "recovery"]} />
 
       {/* KPI row */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">

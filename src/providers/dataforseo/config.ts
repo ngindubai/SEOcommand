@@ -129,4 +129,26 @@ export const COST_ESTIMATE_USD: Record<string, number> = {
   backlinksDomainIntersection: 0.08,
   businessGoogleMyBusinessInfoLive: 0.02,
   serpGoogleMapsLiveAdvanced: 0.003,
+  labsHistoricalRankOverview: 0.15,
+  backlinksBrokenPages: 0.07,
+  researchSerp: 0.003,
+  aiMentions: 0.22,
+  aiKeywordDemand: 0.01,
+  searchTrends: 0.03,
+  googleReviews: 0.02,
 };
+
+/** Scale preflight estimates with requested depth; deeper evidence must not use a small default. */
+export function requestCostEstimate(key: string, body: unknown, override?: number): number {
+  if (override != null && (!Number.isFinite(override) || override < 0)) throw new Error("Invalid provider cost estimate.");
+  const tasks = Array.isArray(body) ? body as Record<string, unknown>[] : [];
+  const dynamic = tasks.reduce((sum, task) => {
+    const limit = typeof task.limit === "number" ? task.limit : 100;
+    if (["labsRankedKeywords", "labsRelevantPages", "labsKeywordIdeas", "labsDomainIntersection", "labsCompetitorsDomain"].includes(key)) return sum + .012 + Math.max(0, limit) * .00012;
+    if (["backlinksList", "backlinksReferringDomains", "backlinksBrokenPages"].includes(key)) return sum + .02 + Math.max(0, limit) * .00004;
+    if (["serpOrganicLive", "researchSerp"].includes(key)) return sum + .003 * Math.ceil(Math.max(10, Number(task.depth) || 10) / 10);
+    if (key === "onPageTaskPost") return sum + Math.max(1, Number(task.max_crawl_pages) || 100) * .000125;
+    return sum;
+  }, 0);
+  return Math.max(COST_ESTIMATE_USD[key] ?? .05, override ?? 0, dynamic);
+}

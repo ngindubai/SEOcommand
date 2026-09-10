@@ -12,6 +12,7 @@ import { BudgetExceededError } from "./errors";
  */
 
 export interface SpendRecord {
+  id?: string;
   provider: string;
   month: string; // YYYY-MM
   endpoint: string;
@@ -21,6 +22,7 @@ export interface SpendRecord {
 }
 
 export interface SpendStore {
+  reservedUsd?(month: string, excludeId?: string): Promise<number>;
   monthToDateUsd(provider: string, month: string): Promise<number>;
   record(entry: SpendRecord): Promise<void>;
 }
@@ -46,6 +48,7 @@ export class InMemorySpendStore implements SpendStore {
 }
 
 export interface GuardResult {
+  reservedUsd?: number;
   spentUsd: number;
   limitUsd: number;
   remainingUsd: number;
@@ -64,15 +67,16 @@ export class SpendGuard {
   async status(): Promise<GuardResult> {
     const month = currentMonth(this.clock());
     const spent = await this.store.monthToDateUsd(this.provider, month);
-    return this.toResult(spent);
+    return this.toResult(spent, await this.store.reservedUsd?.(month) ?? 0);
   }
 
-  private toResult(spent: number): GuardResult {
-    const pct = this.limitUsd === 0 ? 0 : (spent / this.limitUsd) * 100;
+  private toResult(spent: number, reserved = 0): GuardResult {
+    const pct = this.limitUsd === 0 ? 0 : ((spent + reserved) / this.limitUsd) * 100;
     return {
       spentUsd: spent,
+      ...(reserved > 0 ? { reservedUsd: reserved } : {}),
       limitUsd: this.limitUsd,
-      remainingUsd: remaining({ limitUsd: this.limitUsd, spentUsd: spent }),
+      remainingUsd: remaining({ limitUsd: this.limitUsd, spentUsd: spent + reserved }),
       pctUsed: Math.round(pct * 10) / 10,
       crossed: crossedThresholds({ limitUsd: this.limitUsd, spentUsd: spent }),
     };
@@ -91,18 +95,21 @@ export class SpendGuard {
       domainSlug?: string | null;
       critical?: boolean;
       requests?: number;
+      requestId?: string;
     },
     fn: () => Promise<{ result: T; costUsd: number }>,
   ): Promise<{ result: T; guard: GuardResult; costUsd: number }> {
     const month = currentMonth(this.clock());
     const spent = await this.store.monthToDateUsd(this.provider, month);
-    if (!canSpend({ limitUsd: this.limitUsd, spentUsd: spent }, opts.estimateUsd, { critical: opts.critical })) {
+    const reserved = await this.store.reservedUsd?.(month, opts.requestId) ?? 0;
+    if (!canSpend({ limitUsd: this.limitUsd, spentUsd: spent + reserved }, opts.estimateUsd, { critical: opts.critical })) {
       throw new BudgetExceededError(spent, this.limitUsd, opts.endpoint);
     }
 
     const { result, costUsd } = await fn();
 
     await this.store.record({
+      ...(opts.requestId ? { id: opts.requestId } : {}),
       provider: this.provider,
       month,
       endpoint: opts.endpoint,
@@ -112,6 +119,6 @@ export class SpendGuard {
     });
 
     const actualCostUsd = Number.isFinite(costUsd) ? costUsd : 0;
-    return { result, costUsd: actualCostUsd, guard: this.toResult(spent + actualCostUsd) };
+    return { result, costUsd: actualCostUsd, guard: this.toResult(spent + actualCostUsd, reserved) };
   }
 }

@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { chromium, type Browser, type Page } from "playwright";
 import { db, schema } from "@/db";
 import type { ManagedSite } from "./types";
 import { createNotification } from "./notifications";
 import { assertPublicHostname, fetchPublic, isObviouslyPublicHostname } from "./public-network";
+import { excludedFromCrawl, internationalChecks, structuredDataIssues } from "./audit-depth";
 
 const USER_AGENT = "OrwellSEOCommand/2.0 (+hybrid technical audit)";
 const DEFAULT_BROWSER_PAGES = 200;
@@ -199,6 +200,7 @@ async function inspectPage(page: Page, url: string, depth: number, host: string)
         bodyText,
         schemas: [...new Set(schemas)],
         invalidJsonLd,
+        jsonLd: Array.from(document.querySelectorAll<HTMLScriptElement>('script[type="application/ld+json"]')).map((node) => (node.textContent ?? "").slice(0, 100000)).slice(0, 30),
         hreflang,
         links,
       };
@@ -221,6 +223,7 @@ async function inspectPage(page: Page, url: string, depth: number, host: string)
     if (!data.canonical) issues.push("missing_canonical");
     if (!indexable) issues.push("not_indexable");
     if (data.invalidJsonLd) issues.push("invalid_json_ld");
+    issues.push(...structuredDataIssues(data.jsonLd));
     if (jsDependent) issues.push("javascript_dependent_content");
     if (Object.keys(data.hreflang).length && !Object.values(data.hreflang).some((value) => cleanUrl(value) === cleanUrl(finalUrl ?? url))) issues.push("hreflang_missing_self_reference");
     return {
@@ -284,6 +287,8 @@ async function launchBrowser(): Promise<Browser> {
 export async function runBrowserCrawl(site: ManagedSite, requestedMax?: number): Promise<BrowserCrawlResult> {
   if (!publicHost(site.host)) throw new Error("Browser crawler only accepts public website hosts.");
   await assertPublicHostname(site.host);
+  const [settings] = await db().select({ payload: schema.commandRecords.payload }).from(schema.commandRecords).where(and(eq(schema.commandRecords.siteSlug, site.id), eq(schema.commandRecords.kind, "settings"), eq(schema.commandRecords.recordKey, "preferences")));
+  const exclusions = Array.isArray(settings?.payload.crawlExclusions) ? settings.payload.crawlExclusions.filter((v): v is string => typeof v === "string" && v.startsWith("/")) : [];
   const maxPages = Math.min(
     Math.max(requestedMax ?? Number(process.env.BROWSER_CRAWL_MAX_PAGES ?? DEFAULT_BROWSER_PAGES), 1),
     site.crawlMaxPages,
@@ -321,10 +326,12 @@ export async function runBrowserCrawl(site: ManagedSite, requestedMax?: number):
     const queue: Array<{ url: string; depth: number }> = [{ url: home, depth: 0 }, ...seeds.map((url) => ({ url, depth: 1 }))];
     const seen = new Set<string>();
     const pages: BrowserCrawlPageInput[] = [];
+    const excluded = new Set<string>();
     while (queue.length && pages.length < maxPages) {
       const next = queue.shift()!;
       if (seen.has(next.url) || !sameSite(next.url, site.host)) continue;
       seen.add(next.url);
+      if (excludedFromCrawl(next.url, exclusions)) { excluded.add(next.url); continue; }
       const result = await inspectPage(page, next.url, next.depth, site.host);
       pages.push(result);
       for (const link of result.links) {
@@ -333,6 +340,7 @@ export async function runBrowserCrawl(site: ManagedSite, requestedMax?: number):
     }
     await context.close();
     applyCrossPageChecks(pages);
+    const internationalCoverage = internationalChecks(pages);
 
     const priorPages = previous
       ? await db().select().from(schema.browserCrawlPages).where(eq(schema.browserCrawlPages.runId, previous.id))
@@ -340,6 +348,10 @@ export async function runBrowserCrawl(site: ManagedSite, requestedMax?: number):
     const before = new Map(priorPages.map((item) => [item.url, item]));
     const after = new Map(pages.map((item) => [item.url, item]));
     const diffSummary = {
+      ...internationalCoverage,
+      excluded: excluded.size,
+      discovered: new Set([...seen, ...queue.map((item) => item.url)]).size,
+      unvisited: new Set(queue.filter((item) => !seen.has(item.url)).map((item) => item.url)).size,
       added: [...after.keys()].filter((url) => !before.has(url)).length,
       removed: [...before.keys()].filter((url) => !after.has(url)).length,
       contentChanged: pages.filter((item) => before.get(item.url)?.renderedHash && before.get(item.url)?.renderedHash !== item.renderedHash).length,

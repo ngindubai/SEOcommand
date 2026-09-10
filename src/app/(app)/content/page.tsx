@@ -1,4 +1,5 @@
 "use client";
+import { ResearchEvidencePanel } from "@/components/research/evidence-panel";
 
 import { useMemo, useState } from "react";
 import { FileText, TrendingDown, TrendingUp, ExternalLink, BarChart3, ListTodo } from "lucide-react";
@@ -212,6 +213,7 @@ export default function ContentIntelligencePage() {
       />
 
       <ScopeNote isPortfolio={isPortfolio} noun="content data" />
+      <ResearchEvidencePanel features={["questions"]} />
 
       {loading && !bundle ? (
         <>

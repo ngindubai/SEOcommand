@@ -9,6 +9,11 @@ import { closeDb } from "../src/db";
 import { processBrowserCrawlJobs, processDueLocalSeo, queueDueBrowserCrawls, runReliabilityChecks } from "../src/platform/operational-jobs";
 
 import { processCommandChecks, queueCommandSchedules } from "../src/platform/command-jobs";
+import { notifyOutreachFollowups } from "../src/platform/outreach-monitor";
+import { processResearchJobs } from "../src/platform/research-jobs";
+
+import { processReportArchives } from "../src/reports/archive";
+import { deliverDueReports } from "../src/reports/delivery";
 
 let shuttingDown = false;
 process.on("SIGTERM", () => { shuttingDown = true; });
@@ -16,8 +21,15 @@ process.on("SIGINT", () => { shuttingDown = true; });
 
 async function main() {
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required.");
+  await processReportArchives(() => shuttingDown);
+  if (shuttingDown) return;
+  await deliverDueReports(new Date(), true);
+  if (shuttingDown) return;
   await queueCommandSchedules();
+  await notifyOutreachFollowups();
   await processCommandChecks(undefined, () => shuttingDown);
+  if (shuttingDown) return;
+  await processResearchJobs(undefined, () => shuttingDown);
   if (shuttingDown) return;
   // Pick up interrupted/manual requests without waiting for the daily provider schedule.
   const scans = await processPlatformJobs(syncDomain);

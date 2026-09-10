@@ -1,12 +1,14 @@
 import {
   basicAuthHeader,
   COST_ESTIMATE_USD,
+  requestCostEstimate,
   ENDPOINTS,
   type DataForSeoConfig,
 } from "./config";
 import { classifyStatus, DailyLimitError, DataForSeoError } from "./errors";
 import type { GuardResult, SpendGuard } from "./cost";
 import { assertSiteSpendAllowed } from "@/platform/spend-approval";
+import { withProviderSpendLock } from "./spend-lock";
 
 /** The DataForSEO top-level response envelope (fields we rely on). */
 interface DfsEnvelope<T> {
@@ -50,10 +52,11 @@ export class DataForSeoClient {
     private guard: SpendGuard,
   ) {}
 
-  private async rawFetch(path: string, body: unknown): Promise<Response> {
+  private async rawFetch(path: string, body: unknown, retry = true): Promise<Response> {
     const url = `${this.cfg.baseUrl}${path}`;
     let lastErr: unknown;
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const retries = retry ? MAX_RETRIES : 0;
+    for (let attempt = 0; attempt <= retries; attempt++) {
       try {
         const res = await fetch(url, {
           method: body === undefined ? "GET" : "POST",
@@ -65,14 +68,14 @@ export class DataForSeoClient {
           cache: "no-store",
           signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         });
-        if (RETRYABLE.has(res.status) && attempt < MAX_RETRIES) {
+        if (RETRYABLE.has(res.status) && attempt < retries) {
           await new Promise((r) => setTimeout(r, backoffMs(attempt)));
           continue;
         }
         return res;
       } catch (err) {
         lastErr = err;
-        if (attempt < MAX_RETRIES) {
+        if (attempt < retries) {
           await new Promise((r) => setTimeout(r, backoffMs(attempt)));
           continue;
         }
@@ -113,20 +116,22 @@ export class DataForSeoClient {
     endpointKey: keyof typeof COST_ESTIMATE_USD,
     path: string,
     body: unknown,
-    opts: { domainSlug?: string | null; critical?: boolean } = {},
+    opts: { domainSlug?: string | null; critical?: boolean; estimateUsd?: number; retry?: boolean; requestId?: string } = {},
   ): Promise<{ result: T[]; guard: GuardResult; costUsd: number }> {
-    const estimate = COST_ESTIMATE_USD[endpointKey] ?? 0.05;
-    await assertSiteSpendAllowed(opts.domainSlug, endpointKey, estimate);
+    return withProviderSpendLock(async () => {
+    const estimate = requestCostEstimate(endpointKey, body, opts.estimateUsd);
+    await assertSiteSpendAllowed(opts.domainSlug, endpointKey, estimate, opts.requestId);
     const { result, guard, costUsd } = await this.guard.run<T[]>(
-      { endpoint: endpointKey, estimateUsd: estimate, domainSlug: opts.domainSlug, critical: opts.critical },
+      { endpoint: endpointKey, estimateUsd: estimate, domainSlug: opts.domainSlug, critical: opts.critical, requestId: opts.requestId },
       async () => {
-        const res = await this.rawFetch(path, body);
+        const res = await this.rawFetch(path, body, opts.retry);
         const json = (await res.json()) as DfsEnvelope<T>;
         const parsed = this.parse<T>(json, path);
         return { result: parsed.result, costUsd: parsed.cost };
       },
     );
     return { result, guard, costUsd };
+    });
   }
 
   /**
@@ -138,14 +143,15 @@ export class DataForSeoClient {
     endpointKey: keyof typeof COST_ESTIMATE_USD,
     path: string,
     body: unknown,
-    opts: { domainSlug?: string | null; critical?: boolean } = {},
-  ): Promise<{ taskId: string | null; guard: GuardResult }> {
-    const estimate = COST_ESTIMATE_USD[endpointKey] ?? 0.05;
-    await assertSiteSpendAllowed(opts.domainSlug, endpointKey, estimate);
-    const { result, guard } = await this.guard.run<string | null>(
-      { endpoint: endpointKey, estimateUsd: estimate, domainSlug: opts.domainSlug, critical: opts.critical },
+    opts: { domainSlug?: string | null; critical?: boolean; estimateUsd?: number; retry?: boolean; requestId?: string } = {},
+  ): Promise<{ taskId: string | null; guard: GuardResult; costUsd: number }> {
+    return withProviderSpendLock(async () => {
+    const estimate = requestCostEstimate(endpointKey, body, opts.estimateUsd);
+    await assertSiteSpendAllowed(opts.domainSlug, endpointKey, estimate, opts.requestId);
+    const { result, guard, costUsd } = await this.guard.run<string | null>(
+      { endpoint: endpointKey, estimateUsd: estimate, domainSlug: opts.domainSlug, critical: opts.critical, requestId: opts.requestId },
       async () => {
-        const res = await this.rawFetch(path, body);
+        const res = await this.rawFetch(path, body, opts.retry);
         const json = (await res.json()) as DfsEnvelope<unknown>;
         const topClass = classifyStatus(json.status_code);
         if (topClass === "daily_limit") throw new DailyLimitError(path);
@@ -161,7 +167,20 @@ export class DataForSeoClient {
         return { result: task?.id ?? null, costUsd: task?.cost ?? json.cost ?? 0 };
       },
     );
-    return { taskId: result, guard };
+    return { taskId: result, guard, costUsd };
+    });
+  }
+
+  /** Free retrieval of an already paid review task; never posts a replacement. */
+  async fetchReviewTask(taskId: string): Promise<Record<string, unknown>[] | null> {
+    if (!/^[a-zA-Z0-9-]+$/.test(taskId)) throw new Error("Invalid review task identifier.");
+    const path = `/v3/business_data/google/reviews/task_get/${taskId}`;
+    const response = await this.rawFetch(path, undefined);
+    const envelope = await response.json() as DfsEnvelope<Record<string, unknown>>;
+    if (classifyStatus(envelope.status_code) === "error") this.parse(envelope, path);
+    const task = envelope.tasks?.[0];
+    if (task && isTaskNotReady(task.status_code)) return null;
+    return this.parse(envelope, path).result;
   }
 
   /** Unguarded GET for zero-cost metadata endpoints (e.g. model lists). */

@@ -1,6 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { SpendRecord, SpendStore } from "./cost";
+import { uncertainResearchSpend } from "./reservations";
 
 /**
  * Durable spend store backed by the `provider_spend` table. Survives restarts so
@@ -8,6 +9,7 @@ import type { SpendRecord, SpendStore } from "./cost";
  * migrations. Falls back gracefully at the factory level when no DB is present.
  */
 export class PgSpendStore implements SpendStore {
+  async reservedUsd(month: string, excludeId?: string) { return uncertainResearchSpend(month, { excludeId }); }
   async monthToDateUsd(provider: string, month: string): Promise<number> {
     const rows = await db()
       .select({ total: sql<number>`COALESCE(SUM(${schema.providerSpend.costUsd}), 0)` })
@@ -20,12 +22,13 @@ export class PgSpendStore implements SpendStore {
 
   async record(entry: SpendRecord): Promise<void> {
     await db().insert(schema.providerSpend).values({
+      ...(entry.id ? { id: entry.id } : {}),
       provider: entry.provider,
       month: entry.month,
       endpoint: entry.endpoint,
       domainSlug: entry.domainSlug ?? null,
       costUsd: entry.costUsd,
       requests: entry.requests,
-    });
+    }).onConflictDoNothing();
   }
 }

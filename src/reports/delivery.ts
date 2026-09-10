@@ -5,6 +5,8 @@ import { nextReportRun, type ReportCadence } from "@/lib/report-schedule";
 import { buildDomainBundle, buildPortfolio } from "@/sync/bundle";
 import { getManagedSite, resolveGroupSiteSlugs } from "@/platform/site-store";
 import { resolveReportBranding } from "@/reports/branding";
+import { archiveReport, reportBrowserAvailable } from "./archive";
+import { mailConfigured, sendMail } from "@/providers/google/mail";
 
 export interface DeliverySummary {
   due: number;
@@ -19,7 +21,7 @@ export interface DeliverySummary {
  * through the portfolio's chosen email provider. No third-party mail vendor is
  * hard-coded into the platform.
  */
-export async function deliverDueReports(now = new Date()): Promise<DeliverySummary> {
+export async function deliverDueReports(now = new Date(), nativeOnly = false): Promise<DeliverySummary> {
   const due = await db()
     .select()
     .from(schema.reportDeliverySchedules)
@@ -31,7 +33,27 @@ export async function deliverDueReports(now = new Date()): Promise<DeliverySumma
     );
 
   const webhook = process.env.REPORT_DELIVERY_WEBHOOK_URL;
-  if (!webhook) return { due: due.length, delivered: 0, failed: 0, skipped: due.length };
+  const native = { delivered: 0, failed: 0, handled: new Set<string>() };
+  if (!webhook && reportBrowserAvailable() && mailConfigured() && process.env.QA_SYNTHETIC !== "true") {
+    for (const schedule of due.filter((row) => row.domainSlug || row.scopeType === "site")) {
+      native.handled.add(schedule.id);
+      if (schedule.lastError?.startsWith("[manual review]")) { native.failed++; continue; }
+      const site = schedule.domainSlug ?? schedule.scopeId!;
+      // Claim this scheduled delivery before contacting Gmail. Interrupted or uncertain sends need manual review.
+      const [claimed] = await db().update(schema.reportDeliverySchedules).set({ lastError: "[manual review] Delivery started; check Sent before retrying if interrupted.", updatedAt: now }).where(and(eq(schema.reportDeliverySchedules.id, schedule.id), eq(schema.reportDeliverySchedules.updatedAt, schedule.updatedAt))).returning();
+      if (!claimed) continue;
+      try {
+        const report = await archiveReport(site, schedule.createdBy ?? "report-scheduler");
+        await sendMail({ id: `${schedule.id}-${now.toISOString().slice(0, 10)}`, to: schedule.recipients, subject: schedule.templateName, text: `Your SEO performance report for ${site} is attached.`, attachment: Buffer.from(String(report.payload.pdf), "base64") });
+        await db().update(schema.reportDeliverySchedules).set({ lastDelivered: now, lastError: null, nextRun: nextReportRun(schedule.cadence as ReportCadence, now), updatedAt: new Date() }).where(eq(schema.reportDeliverySchedules.id, schedule.id));
+        native.delivered++;
+      } catch (error) {
+        native.failed++;
+        await db().update(schema.reportDeliverySchedules).set({ lastError: `[manual review] ${error instanceof Error ? error.message : "Delivery failed"}`.slice(0, 500), updatedAt: new Date() }).where(eq(schema.reportDeliverySchedules.id, schedule.id));
+      }
+    }
+  }
+  if (!webhook || nativeOnly) return { due: due.length, delivered: native.delivered, failed: native.failed, skipped: due.length - native.handled.size };
   const url = new URL(webhook);
   if (process.env.NODE_ENV === "production" && url.protocol !== "https:") {
     throw new Error("REPORT_DELIVERY_WEBHOOK_URL must use HTTPS in production.");

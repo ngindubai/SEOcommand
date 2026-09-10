@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, notInArray, getTableColumns, lte, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, notInArray, notLike, getTableColumns, lte, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { hasDatabase } from "@/sync/store";
 import type { CommandRecord } from "@/lib/command-model";
@@ -11,7 +11,7 @@ function serialize(row: typeof schema.commandRecords.$inferSelect): CommandRecor
 export async function commandRecords(siteSlug: string): Promise<CommandRecord[]> {
   if (process.env.QA_SYNTHETIC === "true") return qaRecords.filter((row) => row.siteSlug === siteSlug);
   if (!hasDatabase()) return [];
-  const ranked = db().select({ ...getTableColumns(schema.commandRecords), historyRank: sql<number>`row_number() over (partition by ${schema.commandRecords.kind} order by ${schema.commandRecords.createdAt} desc)`.as("history_rank") }).from(schema.commandRecords).where(and(eq(schema.commandRecords.siteSlug, siteSlug), notInArray(schema.commandRecords.kind, controls))).as("ranked_history");
+  const ranked = db().select({ ...getTableColumns(schema.commandRecords), historyRank: sql<number>`row_number() over (partition by ${schema.commandRecords.kind} order by ${schema.commandRecords.createdAt} desc)`.as("history_rank") }).from(schema.commandRecords).where(and(eq(schema.commandRecords.siteSlug, siteSlug), notInArray(schema.commandRecords.kind, controls), notLike(schema.commandRecords.kind, "research_%"), notLike(schema.commandRecords.kind, "workspace_%"))).as("ranked_history");
   const [settings, history] = await Promise.all([
     db().select().from(schema.commandRecords).where(and(eq(schema.commandRecords.siteSlug, siteSlug), inArray(schema.commandRecords.kind, controls))).orderBy(desc(schema.commandRecords.updatedAt)),
     db().select().from(ranked).where(lte(ranked.historyRank, 120)).orderBy(desc(ranked.createdAt)),
