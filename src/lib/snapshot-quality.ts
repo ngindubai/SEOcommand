@@ -16,7 +16,7 @@ export function normalizeSavedSnapshot<T extends { dataset: string; payload: unk
   if (snapshot.dataset === "ga4_dashboard" && provenance?.source === "google-analytics" && payload && typeof payload === "object") {
     const data = payload as Ga4Dashboard;
     if (data.completeDateRange === undefined && Array.isArray(data.series) && (Date.parse(data.endDate) - Date.parse(data.startDate)) / 86400000 === 179 && data.series.length <= 180) {
-      payload = { ...data, completeDateRange: true, qualityNote: "Older saved report: comparisons are unavailable and website tracking coverage has not been verified." };
+      payload = { ...data, completeDateRange: true, qualityNote: "Older saved report: the latest day may be incomplete for some property time zones. Comparisons and tracking coverage are unverified." };
     }
   }
   if (Array.isArray(payload)) {

@@ -38,3 +38,15 @@ it("requests exactly 28 closed dates for Analytics totals", async () => {
   expect((Date.parse(range.endDate) - Date.parse(range.startDate)) / 86400000 + 1).toBe(28);
   expect(range.endDate < new Date().toISOString().slice(0, 10)).toBe(true);
 });
+
+it("does not include the open US property day when UTC has rolled over", async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date("2026-09-10T06:00:00Z"));
+  try {
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ rows: [] }) });
+    vi.stubGlobal("fetch", fetcher);
+    const report = await ga4Dashboard("example");
+    expect(report.endDate).toBe("2026-09-08");
+    await ga4OrganicOverview("example");
+    expect(JSON.parse(fetcher.mock.calls.at(-1)![1].body).dateRanges[0]).toEqual({ startDate: "2026-08-12", endDate: "2026-09-08" });
+  } finally { vi.useRealTimers(); }
+});

@@ -1,6 +1,6 @@
 import type { DomainId, Provenance } from "@/lib/types";
 import type { Envelope, GoogleProvider } from "../contracts";
-import { GSC_SITE_MAP, GA4_PROPERTY_MAP, GSC_API, GSC_SCOPE, GSC_DATA_LAG_DAYS } from "./config";
+import { GSC_SITE_MAP, GA4_PROPERTY_MAP, GSC_API, GSC_SCOPE, GSC_DATA_LAG_DAYS, GA4_DATA_LAG_DAYS } from "./config";
 import { googleConfigured, getGoogleAccessToken } from "./auth";
 import { gscTotals, gscBreakdown, gscStrikingDistance, gscMovers, shareOfMarket } from "./gsc";
 import { ga4OrganicOverview, ga4LandingPages, ga4Channels } from "./ga4";
@@ -15,7 +15,7 @@ import { ga4OrganicOverview, ga4LandingPages, ga4Channels } from "./ga4";
 function provenance(source: "google-search-console" | "google-analytics", days = 28): Provenance {
   const now = new Date();
   const end = new Date(now);
-  end.setUTCDate(end.getUTCDate() - (source === "google-search-console" ? GSC_DATA_LAG_DAYS : 1));
+  end.setUTCDate(end.getUTCDate() - (source === "google-search-console" ? GSC_DATA_LAG_DAYS : GA4_DATA_LAG_DAYS));
   const start = new Date(end);
   start.setUTCDate(start.getUTCDate() - (days - 1));
   return {

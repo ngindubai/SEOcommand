@@ -16,6 +16,9 @@ export const GA4_SCOPE = "https://www.googleapis.com/auth/analytics.readonly";
 /** Search Console finalises data on a ~2 day lag (mirrors the reference MCP). */
 export const GSC_DATA_LAG_DAYS = 2;
 
+/** Two UTC dates back is closed in every GA4 property time zone. */
+export const GA4_DATA_LAG_DAYS = 2;
+
 function envKey(prefix: string, id: DomainId): string | undefined {
   const value = process.env[`${prefix}_${id.toUpperCase()}`]?.trim();
   return value || undefined;

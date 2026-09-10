@@ -1,4 +1,4 @@
-import { GSC_DATA_LAG_DAYS } from "@/providers/google/config";
+import { GSC_DATA_LAG_DAYS, GA4_DATA_LAG_DAYS } from "@/providers/google/config";
 import type { DomainId, Provenance } from "@/lib/types";
 import type { DerivedRecommendation } from "@/lib/live";
 import { getManagedSite, listManagedSites, paidJobsApproved } from "@/platform/site-store";
@@ -74,7 +74,7 @@ function prov(source: Provenance["source"], location: string, days = 28): Proven
   const now = new Date();
   const end = new Date(now);
   if (source === "google-search-console") end.setUTCDate(end.getUTCDate() - GSC_DATA_LAG_DAYS);
-  if (source === "google-analytics") end.setUTCDate(end.getUTCDate() - 1);
+  if (source === "google-analytics") end.setUTCDate(end.getUTCDate() - GA4_DATA_LAG_DAYS);
   const start = new Date(end);
   start.setUTCDate(start.getUTCDate() - (days - 1));
   return {

@@ -1,6 +1,6 @@
 import type { DomainId, Ga4ChannelRow, Ga4LandingPage, Ga4Overview } from "@/lib/types";
 import { getGoogleAccessToken } from "./auth";
-import { GA4_API, GA4_SCOPE } from "./config";
+import { GA4_API, GA4_SCOPE, GA4_DATA_LAG_DAYS } from "./config";
 import { getManagedSite } from "@/platform/site-store";
 
 /**
@@ -59,7 +59,7 @@ async function propertyFor(domainId: DomainId): Promise<string> {
 }
 
 function dateRange(days: number) {
-  const endDate = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  const endDate = new Date(Date.now() - GA4_DATA_LAG_DAYS * 86_400_000).toISOString().slice(0, 10);
   const startDate = new Date(Date.parse(endDate) - (days - 1) * 86_400_000).toISOString().slice(0, 10);
   return { startDate, endDate };
 }
@@ -142,7 +142,7 @@ export async function ga4Channels(domainId: DomainId, days = 28): Promise<Ga4Cha
 export async function ga4Dashboard(domainId: DomainId): Promise<import("@/lib/dashboard-data").Ga4Dashboard> {
   const { shiftDate } = await import("@/lib/dashboard-data");
   const property = await propertyFor(domainId);
-  const endDate = shiftDate(new Date().toISOString().slice(0, 10), -1);
+  const endDate = shiftDate(new Date().toISOString().slice(0, 10), -GA4_DATA_LAG_DAYS);
   const startDate = shiftDate(endDate, -179);
   const breakdownStartDate = shiftDate(endDate, -27);
   const base = { dimensionFilter: ORGANIC_FILTER, keepEmptyRows: true };
