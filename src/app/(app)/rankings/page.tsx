@@ -24,9 +24,10 @@ import { formatDate } from "@/lib/dates";
 import { cn } from "@/lib/cn";
 import type { GscMover, RankSnapshot } from "@/lib/types";
 
-type RankRow = RankSnapshot & { delta: number };
+type RankRow = RankSnapshot & { delta: number | null };
 
-function DeltaCell({ delta }: { delta: number }) {
+function DeltaCell({ delta }: { delta: number | null }) {
+  if (delta == null) return <span className="text-muted">—</span>;
   const Icon = delta > 0 ? ArrowUpRight : delta < 0 ? ArrowDownRight : Minus;
   const tone = delta > 0 ? "text-success" : delta < 0 ? "text-critical" : "text-muted";
   return (
@@ -81,14 +82,14 @@ const RANK_COLUMNS: Column<RankRow>[] = [
     key: "prevPosition",
     header: "Prev",
     align: "right",
-    sortValue: (r) => r.prevPosition,
-    render: (r) => <span className="text-muted">{r.prevPosition}</span>,
+    sortValue: (r) => r.prevPosition ?? -1,
+    render: (r) => <span className="text-muted">{r.prevPosition ?? "—"}</span>,
   },
   {
     key: "delta",
     header: "Δ",
     align: "right",
-    sortValue: (r) => r.delta,
+    sortValue: (r) => r.delta ?? -Infinity,
     render: (r) => <DeltaCell delta={r.delta} />,
   },
   {
@@ -133,7 +134,7 @@ export default function RankingsPage() {
     () =>
       (bundle?.datasets.rank_snapshots?.data ?? []).map((s) => ({
         ...s,
-        delta: s.prevPosition - s.position,
+        delta: s.prevPosition == null ? null : s.prevPosition - s.position,
       })),
     [bundle],
   );
@@ -508,7 +509,7 @@ export default function RankingsPage() {
               <div className="rounded-md border border-border p-2.5 text-center">
                 <div className="text-2xs uppercase tracking-wide text-muted">Previous</div>
                 <div className="mt-0.5 text-lg font-semibold text-muted tnum">
-                  {selected.prevPosition}
+                  {selected.prevPosition ?? "Unavailable"}
                 </div>
               </div>
               <div className="rounded-md border border-border p-2.5 text-center">

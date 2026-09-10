@@ -1,5 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { sourceHealth } from "@/lib/source-health";
 import { buildDomainBundle } from "@/sync/bundle";
 import { hasDatabase } from "@/sync/store";
 import { commandRecords } from "./command-store";
@@ -48,18 +49,21 @@ export async function buildSiteCommand(siteSlug: string): Promise<SiteCommand> {
   ].sort((a, b) => b.date.localeCompare(a.date));
   const ds = bundle.datasets;
   const sources = [
-    { id: "google", label: "Search Console", data: ds.gsc_pages ?? ds.gsc_totals, mapped: Boolean(site.gscSite), href: `/research?site=${siteSlug}`, days: 4 },
-    { id: "google", label: "Google Analytics", data: ds.ga4_overview, mapped: Boolean(site.ga4PropertyId), href: `/performance?site=${siteSlug}&view=business`, days: 4 },
+    { id: "google", label: "Search Console", data: ds.gsc_timeseries ?? ds.gsc_totals, mapped: Boolean(site.gscSite), href: `/research?site=${siteSlug}`, days: 4 },
+    { id: "google", label: "Google Analytics", data: ds.ga4_dashboard ?? ds.ga4_overview, mapped: Boolean(site.ga4PropertyId), href: `/performance?site=${siteSlug}&view=business`, days: 4 },
     { id: "keywords", label: "Keywords", data: ds.keywords, mapped: true, href: `/rankings?site=${siteSlug}`, days: 8 },
     { id: "technical", label: "Site audit", data: ds.onpage, mapped: true, href: `/health?site=${siteSlug}`, days: 31 },
     { id: "backlinks", label: "Backlinks", data: ds.backlinks, mapped: true, href: `/backlinks?site=${siteSlug}`, days: 31 },
   ];
+  const freshness = sourceHealth(bundle);
   const health: HealthRow[] = sources.map((source) => {
     const at = source.data?.provenance.collectedAt ?? null;
     const failed = jobs.find((job) => (job.progress.modules as string[] | undefined)?.includes(source.id) && ["failed", "completed"].includes(job.status));
-    const state = !source.mapped ? "needs_connection" : failed?.status === "failed" ? "failed" : !at ? "missing" : Date.now() - Date.parse(at) > source.days * 86400000 ? "stale" : "ready";
+    const own = freshness.find((row) => row.label === source.label);
+    const latestFailed = failed?.status === "failed" && (!at || (failed.completedAt ?? failed.startedAt ?? failed.createdAt).getTime() > Date.parse(at));
+    const state = !source.mapped ? "needs_connection" : latestFailed ? "failed" : !at ? "missing" : own?.state === "stale" ? "stale" : "ready";
     const next = records.filter((row) => row.kind === "plan" && row.status === "active" && (row.payload.modules as string[] | undefined)?.includes(source.id)).map((row) => row.nextRunAt).filter((value): value is string => Boolean(value)).sort()[0] ?? null;
-    return { id: `${source.id}:${source.label}`, label: source.label, state, updatedAt: at, through: source.data?.provenance.rangeEnd ?? null, href: !source.mapped ? `/sites/${siteSlug}/settings` : state === "ready" ? source.href : `/scan-centre?site=${siteSlug}&module=${source.id}`, detail: !source.mapped ? "Connect this website’s property" : failed?.status === "failed" ? "Latest scan failed; any earlier saved data is retained" : !at ? "No saved results yet" : "Collection time and reporting period are shown separately", nextRunAt: next };
+    return { id: `${source.id}:${source.label}`, label: source.label, state, updatedAt: at, through: own?.through ?? null, href: !source.mapped ? `/sites/${siteSlug}/settings` : state === "ready" ? source.href : `/scan-centre?site=${siteSlug}&module=${source.id}`, detail: !source.mapped ? "Connect this website’s property" : latestFailed ? "Latest scan failed; any earlier saved data is retained" : !at ? "No saved results yet" : "Collection time and reporting period are shown separately", nextRunAt: next };
   });
   const business = records.find((row) => row.kind === "business" && row.status === "completed")?.payload as BusinessResult | undefined;
   return { site: { id: site.id, name: site.name, host: site.host }, generatedAt: new Date().toISOString(), synthetic, storageAvailable: hasDatabase() || synthetic, bundle, pages, pageCoverage: { loaded: inventory.pages.length, saved: inventory.saved }, records: records.map((row) => row.kind === "baseline" ? { ...row, payload: { title: row.payload.title, pageCount: (row.payload.pages as unknown[] | undefined)?.length ?? 0, capturedAt: row.payload.capturedAt, coverage: row.payload.coverage } } : row), tasks, timeline, health, brandTerms, brand: segmentBrand(ds.gsc_queries?.data, brandTerms, ds.gsc_totals?.data.clicks ?? null), business: business ?? null, causes: groupCauses(ds.onpage?.data.issues ?? [], site.host), links: suggestLinks(pages, inventory.edges, site.host, inventory.capturedAt), permissions: { edit: false, scan: false, settings: false } };

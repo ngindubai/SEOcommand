@@ -1,7 +1,5 @@
 import type {
   Backlink,
-  Ga4Overview,
-  GscTotals,
   Keyword,
   RankSnapshot,
   ReferringDomain,
@@ -9,7 +7,8 @@ import type {
 import type { DomainHeadline, DomainLiveBundle, OnPageResult, PortfolioLive } from "@/lib/live";
 import { getManagedSite, listManagedSites } from "@/platform/site-store";
 import { qualifyRecommendations, normalizedHost } from "@/lib/recommendation-quality";
-import { searchPeriod } from "@/lib/reporting";
+import { sourceHealth } from "@/lib/source-health";
+import { analyticsPeriod, searchPeriod } from "@/lib/reporting";
 import { computeAuthorityScore } from "@/lib/scoring";
 import {
   hasDatabase,
@@ -101,13 +100,14 @@ export async function buildAggregateBundle(siteSlugs?: string[]): Promise<Domain
   return aggregateBundles(bundles);
 }
 
-function headlineFrom(domainId: string, snaps: StoredSnapshot[], ga4Mapped = false, days = 28, end?: string): DomainHeadline {
+export function headlineFrom(domainId: string, snaps: StoredSnapshot[], ga4Mapped = false, days = 28, end?: string): DomainHeadline {
   const by = new Map(snaps.map((s) => [s.dataset, s]));
   const bundle: DomainLiveBundle = { domainId, lastSync: null, datasets: {} };
   attach(bundle, snaps);
   const period = searchPeriod(bundle, days, end);
-  const gsc = by.get("gsc_totals")?.payload as GscTotals | undefined;
-  const ga4 = by.get("ga4_overview")?.payload as Ga4Overview | undefined;
+  const latestSearch = bundle.datasets.gsc_timeseries?.data.map((row) => row.date).sort().at(-1);
+  if (end && latestSearch && latestSearch < end) { period.total = null; period.clickChange = null; period.availableDays = 0; period.end = latestSearch; }
+  const analytics = analyticsPeriod(bundle, days);
   const onpage = by.get("onpage")?.payload as OnPageResult | undefined;
   const keywords = by.get("keywords")?.payload as Keyword[] | undefined;
   const snapshots = by.get("rank_snapshots")?.payload as RankSnapshot[] | undefined;
@@ -127,11 +127,12 @@ function headlineFrom(domainId: string, snaps: StoredSnapshot[], ga4Mapped = fal
     domainId,
     searchPeriod: { start: period.start, end: period.end, availableDays: period.availableDays, clicks: period.total?.clicks ?? null, impressions: period.total?.impressions ?? null, position: period.total?.position ?? null, clickChange: period.clickChange },
     lastSync: last,
-    clicks28d: gsc?.clicks ?? null,
-    impressions28d: gsc?.impressions ?? null,
-    avgPosition: gsc?.position ?? null,
-    sessions28d: ga4?.sessions ?? null,
-    conversions28d: ga4?.conversions ?? null,
+    dataHealth: sourceHealth(bundle),
+    clicks28d: period.total?.clicks ?? null,
+    impressions28d: period.total?.impressions ?? null,
+    avgPosition: period.total?.position ?? null,
+    sessions28d: analytics.total?.sessions ?? null,
+    conversions28d: analytics.total?.conversions ?? null,
     visibility,
     health: onpage ? onpage.healthScore : null,
     authority:
@@ -139,10 +140,10 @@ function headlineFrom(domainId: string, snaps: StoredSnapshot[], ga4Mapped = fal
         ? computeAuthorityScore(referring, backlinks, visibility ?? 0)
         : null,
     keywordsTracked: keywords?.length ?? null,
-    top10: snapshots ? snapshots.filter((s) => s.position <= 10).length : null,
+    top10: snapshots ? snapshots.filter((s) => s.position > 0 && s.position <= 10).length : null,
     referringDomains: referring?.length ?? null,
     criticalIssues: onpage
-      ? onpage.issues.filter((i) => i.severity === "critical" || i.severity === "high").length
+      ? onpage.issues.filter((i) => i.status !== "resolved" && (i.severity === "critical" || i.severity === "high")).length
       : null,
     aiMentionRate:
       ai && ai.length
@@ -184,6 +185,9 @@ export async function buildPortfolio(siteSlugs?: string[], days = 28, end?: stri
   const map = await readLatestForDomains(sites.map((d) => d.id));
   const domains = sites.map((d) => headlineFrom(d.id, map.get(d.id) ?? [], Boolean(d.ga4PropertyId), days, end));
 
+  const bundles = sites.map((site) => { const bundle: DomainLiveBundle = { domainId: site.id, lastSync: null, datasets: {} }; attach(bundle, map.get(site.id) ?? []); return bundle; });
+  const merged = aggregateBundles(bundles);
+  const search = searchPeriod(merged, days, end), analytics = analyticsPeriod(merged, days);
   const synced = domains.filter((d) => d.lastSync != null);
   const healths = domains.map((d) => d.health).filter((h): h is number => h != null);
   const vis = domains.map((d) => d.visibility).filter((v): v is number => v != null);
@@ -192,10 +196,10 @@ export async function buildPortfolio(siteSlugs?: string[], days = 28, end?: stri
     generatedAt: new Date().toISOString(),
     domains,
     totals: {
-      clicks28d: domains.reduce((s, d) => s + (d.clicks28d ?? 0), 0),
-      impressions28d: domains.reduce((s, d) => s + (d.impressions28d ?? 0), 0),
-      sessions28d: domains.reduce((s, d) => s + (d.sessions28d ?? 0), 0),
-      conversions28d: domains.reduce((s, d) => s + (d.conversions28d ?? 0), 0),
+      clicks28d: search.total?.clicks ?? 0,
+      impressions28d: search.total?.impressions ?? 0,
+      sessions28d: analytics.total?.sessions ?? 0,
+      conversions28d: analytics.total?.conversions ?? 0,
       avgHealth: healths.length
         ? Math.round(healths.reduce((s, h) => s + h, 0) / healths.length)
         : null,

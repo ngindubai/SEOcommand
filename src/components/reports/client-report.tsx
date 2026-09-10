@@ -100,8 +100,8 @@ export function ClientReport({ site, template, branding, bundle, outcomes: allOu
   const backlinks = bundle.datasets.backlinks?.data ?? [];
   const ai = bundle.datasets.ai_prompts?.data ?? [];
   const { clickChange, impressionChange } = search;
-  const rankGains = rankings.filter((row) => row.position < row.prevPosition).length;
-  const rankLosses = rankings.filter((row) => row.position > row.prevPosition).length;
+  const rankGains = rankings.filter((row) => row.prevPosition != null && row.position < row.prevPosition).length;
+  const rankLosses = rankings.filter((row) => row.prevPosition != null && row.position > row.prevPosition).length;
   const top10 = rankings.filter((row) => row.position <= 10).length;
   const aiMentionRate = ai.length ? ai.reduce((total, row) => total + row.mentionRate, 0) / ai.length : null;
   const aiCitationRate = ai.length ? ai.reduce((total, row) => total + row.citationRate, 0) / ai.length : null;

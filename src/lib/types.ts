@@ -51,6 +51,8 @@ export interface Provenance {
   device: Device;
   freshness: FreshnessStatus;
   mode: DataMode;
+  normalizationVersion?: number;
+  periodNote?: string;
 }
 
 export type Trend = "up" | "down" | "flat";
@@ -163,7 +165,7 @@ export interface RankSnapshot {
   keyword: string;
   date: string;
   position: number;
-  prevPosition: number;
+  prevPosition: number | null;
   device: Device;
   location: string;
   url: string;
@@ -175,7 +177,7 @@ export interface RankSnapshot {
 export interface PositionBucket {
   label: string; // "1-3", "4-10", ...
   count: number;
-  prevCount: number;
+  prevCount: number | null;
 }
 
 /* ----------------------------- Competitors ------------------------------ */

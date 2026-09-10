@@ -1,5 +1,5 @@
 import type { DomainLiveBundle } from "./live";
-import { percentageChange, reportingWindow, searchSummary, sessionSummary } from "./dashboard-data";
+import { analyticsDays, percentageChange, reportingWindow, searchSummary, sessionSummary } from "./dashboard-data";
 
 /** A single period contract for dashboards, website rows and client reports. */
 export function searchPeriod(bundle: DomainLiveBundle | null | undefined, days = 28, end?: string) {
@@ -24,10 +24,12 @@ export function searchPeriod(bundle: DomainLiveBundle | null | undefined, days =
 
 export function analyticsPeriod(bundle: DomainLiveBundle | null | undefined, days = 28) {
   const data = bundle?.datasets.ga4_dashboard?.data;
-  const period = reportingWindow(data?.series ?? [], days, data?.endDate);
+  const period = reportingWindow(data ? analyticsDays(data) : [], days, data?.endDate);
+  if (data?.qualityNote) period.comparable = false;
   const saved = bundle?.datasets.ga4_overview;
   const legacy = saved?.data;
-  const fallback = !period.current.length && legacy ? {
+  const savedDays = saved?.provenance.rangeStart && saved.provenance.rangeEnd ? (Date.parse(saved.provenance.rangeEnd) - Date.parse(saved.provenance.rangeStart)) / 86_400_000 + 1 : 0;
+  const fallback = !data && !period.current.length && legacy && savedDays === days ? {
     sessions: legacy.sessions, engaged: legacy.engagedSessions, engagementRate: legacy.engagementRate,
     viewsPerSession: legacy.sessions ? legacy.screenPageViews / legacy.sessions : 0, conversions: legacy.conversions,
   } : null;

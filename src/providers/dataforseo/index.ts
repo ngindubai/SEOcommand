@@ -103,7 +103,7 @@ export async function fetchRankedKeywordsBundle(
       keyword: k.keyword,
       date: today,
       position: k.position!,
-      prevPosition: k.prevPosition ?? k.position!,
+      prevPosition: k.prevPosition,
       device: "desktop",
       location: k.location,
       url: k.targetUrl ?? "",

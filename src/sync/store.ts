@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
+import { normalizeSavedSnapshot } from "@/lib/snapshot-quality";
 import type { Provenance } from "@/lib/types";
 
 /**
@@ -47,7 +48,7 @@ export async function readLatestSnapshots(domainSlug: string): Promise<StoredSna
     .from(schema.datasetSnapshots)
     .where(eq(schema.datasetSnapshots.domainSlug, domainSlug))
     .orderBy(schema.datasetSnapshots.dataset, desc(schema.datasetSnapshots.capturedOn));
-  return rows as StoredSnapshot[];
+  return (rows as StoredSnapshot[]).map(normalizeSavedSnapshot);
 }
 
 /** Full history of one dataset (ascending) — for accumulated series. */
@@ -70,7 +71,7 @@ export async function readSnapshotHistory(
       ),
     )
     .orderBy(asc(schema.datasetSnapshots.capturedOn));
-  return rows as StoredSnapshot[];
+  return (rows as StoredSnapshot[]).map(normalizeSavedSnapshot);
 }
 
 /** Latest snapshots for many domains at once (portfolio aggregation). */
@@ -95,7 +96,7 @@ export async function readLatestForDomains(
   const out = new Map<string, StoredSnapshot[]>();
   for (const r of rows as (StoredSnapshot & { domainSlug: string })[]) {
     const list = out.get(r.domainSlug) ?? [];
-    list.push(r);
+    list.push(normalizeSavedSnapshot(r));
     out.set(r.domainSlug, list);
   }
   return out;

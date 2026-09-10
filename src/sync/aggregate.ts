@@ -70,8 +70,10 @@ function envelope<T>(parts: DS<unknown>[], data: T): DS<T> {
 function concatDs<T>(
   bundles: DomainLiveBundle[],
   key: keyof DomainLiveBundle["datasets"],
+  matchPeriod = false,
 ): DS<T[]> | undefined {
-  const parts = pickDs<T[]>(bundles, key);
+  const all = pickDs<T[]>(bundles, key);
+  const parts = matchPeriod ? samePeriod(all) : all;
   if (parts.length === 0) return undefined;
   return envelope(parts, parts.flatMap((p) => p.data ?? []));
 }
@@ -136,7 +138,7 @@ function mergePositionBuckets(bundles: DomainLiveBundle[]): DS<PositionBucket[]>
       const existing = byLabel.get(b.label);
       if (existing) {
         existing.count += b.count;
-        existing.prevCount += b.prevCount;
+        existing.prevCount = existing.prevCount != null && b.prevCount != null ? existing.prevCount + b.prevCount : null;
       } else {
         byLabel.set(b.label, { ...b });
         order.push(b.label);
@@ -148,7 +150,10 @@ function mergePositionBuckets(bundles: DomainLiveBundle[]): DS<PositionBucket[]>
 
 /** Timeseries points sum per date; position is impression-weighted. */
 function mergeTimeseries(bundles: DomainLiveBundle[]): DS<GscTimeseriesPoint[]> | undefined {
-  const parts = pickDs<GscTimeseriesPoint[]>(bundles, "gsc_timeseries");
+  const candidates = pickDs<GscTimeseriesPoint[]>(bundles, "gsc_timeseries");
+  const lastDate = (part: DS<GscTimeseriesPoint[]>) => part.data.map((row) => row.date).sort().at(-1);
+  const latest = candidates.map(lastDate).filter((date): date is string => Boolean(date)).sort().at(-1);
+  const parts = candidates.filter((part) => latest && lastDate(part) === latest);
   if (parts.length === 0) return undefined;
   const byDate = new Map<string, { clicks: number; impressions: number; weighted: number }>();
   for (const part of parts) {
@@ -173,7 +178,7 @@ function mergeTimeseries(bundles: DomainLiveBundle[]): DS<GscTimeseriesPoint[]> 
     }));
   return { ...envelope(parts, data), coverage: bundles.map((bundle) => {
     const dates = (bundle.datasets.gsc_timeseries?.data ?? []).map((row) => row.date).sort();
-    return { domainId: bundle.domainId, start: dates[0] ?? null, end: dates.at(-1) ?? null };
+    return { domainId: bundle.domainId, start: dates[0] ?? null, end: dates.at(-1) ?? null, included: parts.includes(bundle.datasets.gsc_timeseries!) };
   }) };
 }
 
@@ -286,7 +291,7 @@ function mergeMovers(
   bundles: DomainLiveBundle[],
   key: "gsc_movers" | "gsc_page_movers",
 ): DS<{ gains: GscMover[]; losses: GscMover[] }> | undefined {
-  const parts = pickDs<{ gains: GscMover[]; losses: GscMover[] }>(bundles, key);
+  const parts = samePeriod(pickDs<{ gains: GscMover[]; losses: GscMover[] }>(bundles, key));
   if (parts.length === 0) return undefined;
   return envelope(parts, {
     gains: parts.flatMap((p) => p.data?.gains ?? []),
@@ -327,11 +332,11 @@ export function aggregateBundles(bundles: DomainLiveBundle[]): DomainLiveBundle 
   d.referring_domains = concatDs<ReferringDomain>(withData, "referring_domains");
   d.backlink_history = concatDs<BacklinkHistoryPoint>(withData, "backlink_history");
   d.ai_prompts = concatDs<AiPrompt>(withData, "ai_prompts");
-  d.gsc_queries = concatDs<GscRow>(withData, "gsc_queries");
-  d.gsc_pages = concatDs<GscRow>(withData, "gsc_pages");
-  d.striking_distance = concatDs<StrikingDistanceRow>(withData, "striking_distance");
-  d.ga4_landing_pages = concatDs<Ga4LandingPage>(withData, "ga4_landing_pages");
-  d.ga4_channels = concatDs<Ga4ChannelRow>(withData, "ga4_channels");
+  d.gsc_queries = concatDs<GscRow>(withData, "gsc_queries", true);
+  d.gsc_pages = concatDs<GscRow>(withData, "gsc_pages", true);
+  d.striking_distance = concatDs<StrikingDistanceRow>(withData, "striking_distance", true);
+  d.ga4_landing_pages = concatDs<Ga4LandingPage>(withData, "ga4_landing_pages", true);
+  d.ga4_channels = concatDs<Ga4ChannelRow>(withData, "ga4_channels", true);
   d.recommendations = concatDs<DerivedRecommendation>(withData, "recommendations");
 
   d.gsc_totals = mergeGscTotals(withData);

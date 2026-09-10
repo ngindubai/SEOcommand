@@ -13,6 +13,9 @@ export interface Ga4Dashboard {
   breakdownStartDate: string;
   domainIds: string[];
   series: SessionDay[];
+  /** True only after a successful, untruncated daily report. */
+  completeDateRange?: boolean;
+  qualityNote?: string;
   countries: { code: string; country: string; sessions: number }[];
   pages: { domainId: string; title: string; host: string; path: string; views: number }[];
 }
@@ -55,11 +58,24 @@ export function percentageChange(current: number | null | undefined, previous: n
   return (current - previous) / previous * 100;
 }
 
+/** Dates omitted by a complete GA4 date report represent no recorded activity.
+ * This does not verify that the website tracking tag was working. */
+export function analyticsDays(data: Ga4Dashboard): SessionDay[] {
+  if (!data.completeDateRange) return data.series;
+  const span = (Date.parse(data.endDate) - Date.parse(data.startDate)) / 86_400_000;
+  if (!Number.isInteger(span) || span < 0 || span > 366) return data.series;
+  const byDate = new Map(data.series.map((row) => [row.date, row]));
+  return Array.from({ length: span + 1 }, (_, i) => {
+    const date = shiftDate(data.startDate, i);
+    return byDate.get(date) ?? { date, sessions: 0, engagedSessions: 0, views: 0, conversions: 0 };
+  });
+}
+
 /** Only combine matching reporting windows; delayed properties remain visibly absent. */
 export function mergeDashboardData(parts: Ga4Dashboard[]): Ga4Dashboard | undefined {
   const latest = [...parts].sort((a, b) => b.endDate.localeCompare(a.endDate))[0];
   if (!latest) return undefined;
-  const included = parts.filter((p) => p.startDate === latest.startDate && p.endDate === latest.endDate && p.breakdownStartDate === latest.breakdownStartDate);
+  const included = parts.filter((p) => p.startDate === latest.startDate && p.endDate === latest.endDate && p.breakdownStartDate === latest.breakdownStartDate).map((part) => ({ ...part, series: analyticsDays(part) }));
   const days = new Map<string, SessionDay>();
   const countries = new Map<string, Ga4Dashboard["countries"][number]>();
   for (const part of included) {
@@ -71,5 +87,5 @@ export function mergeDashboardData(parts: Ga4Dashboard[]): Ga4Dashboard | undefi
       countries.set(row.code, { ...row, sessions: row.sessions + (countries.get(row.code)?.sessions ?? 0) });
     }
   }
-  return { ...latest, domainIds: [...new Set(included.flatMap((p) => p.domainIds))], series: [...days.values()].filter((row) => included.every((part) => part.series.some((day) => day.date === row.date))).sort((a, b) => a.date.localeCompare(b.date)), countries: [...countries.values()].sort((a, b) => b.sessions - a.sessions), pages: included.flatMap((p) => p.pages).sort((a, b) => b.views - a.views) };
+  return { ...latest, completeDateRange: included.every((part) => part.completeDateRange), qualityNote: included.find((part) => part.qualityNote)?.qualityNote, domainIds: [...new Set(included.flatMap((p) => p.domainIds))], series: [...days.values()].sort((a, b) => a.date.localeCompare(b.date)), countries: [...countries.values()].sort((a, b) => b.sessions - a.sessions), pages: included.flatMap((p) => p.pages).sort((a, b) => b.views - a.views) };
 }

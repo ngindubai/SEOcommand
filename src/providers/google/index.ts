@@ -1,6 +1,6 @@
 import type { DomainId, Provenance } from "@/lib/types";
 import type { Envelope, GoogleProvider } from "../contracts";
-import { GSC_SITE_MAP, GA4_PROPERTY_MAP, GSC_API, GSC_SCOPE } from "./config";
+import { GSC_SITE_MAP, GA4_PROPERTY_MAP, GSC_API, GSC_SCOPE, GSC_DATA_LAG_DAYS } from "./config";
 import { googleConfigured, getGoogleAccessToken } from "./auth";
 import { gscTotals, gscBreakdown, gscStrikingDistance, gscMovers, shareOfMarket } from "./gsc";
 import { ga4OrganicOverview, ga4LandingPages, ga4Channels } from "./ga4";
@@ -12,12 +12,12 @@ import { ga4OrganicOverview, ga4LandingPages, ga4Channels } from "./ga4";
  * or refresh-token auth. Every response carries live GSC/GA4 provenance.
  */
 
-function provenance(source: "google-search-console" | "google-analytics"): Provenance {
+function provenance(source: "google-search-console" | "google-analytics", days = 28): Provenance {
   const now = new Date();
   const end = new Date(now);
-  end.setUTCDate(end.getUTCDate() - 2);
+  end.setUTCDate(end.getUTCDate() - (source === "google-search-console" ? GSC_DATA_LAG_DAYS : 1));
   const start = new Date(end);
-  start.setUTCDate(start.getUTCDate() - 27);
+  start.setUTCDate(start.getUTCDate() - (days - 1));
   return {
     source,
     collectedAt: now.toISOString(),
@@ -30,11 +30,11 @@ function provenance(source: "google-search-console" | "google-analytics"): Prove
   };
 }
 
-function gsc<T>(data: T): Envelope<T> {
-  return { data, provenance: provenance("google-search-console") };
+function gsc<T>(data: T, days = 28): Envelope<T> {
+  return { data, provenance: provenance("google-search-console", days) };
 }
-function ga4<T>(data: T): Envelope<T> {
-  return { data, provenance: provenance("google-analytics") };
+function ga4<T>(data: T, days = 28): Envelope<T> {
+  return { data, provenance: provenance("google-analytics", days) };
 }
 
 export function createGoogleProvider(): GoogleProvider {
@@ -43,29 +43,29 @@ export function createGoogleProvider(): GoogleProvider {
     live: true,
 
     async gscTotals(domainId, days) {
-      return gsc(await gscTotals(domainId, days));
+      return gsc(await gscTotals(domainId, days), days);
     },
     async gscBreakdown(domainId, dimension, days, rowLimit) {
-      return gsc(await gscBreakdown(domainId, dimension, days, rowLimit));
+      return gsc(await gscBreakdown(domainId, dimension, days, rowLimit), days);
     },
     async gscStrikingDistance(domainId, days) {
-      return gsc(await gscStrikingDistance(domainId, days));
+      return gsc(await gscStrikingDistance(domainId, days), days);
     },
     async gscMovers(domainId, days) {
-      return gsc(await gscMovers(domainId, days));
+      return gsc(await gscMovers(domainId, days), days);
     },
     async shareOfMarket(domainId, days) {
-      return gsc(await shareOfMarket(domainId, days));
+      return gsc(await shareOfMarket(domainId, days), days);
     },
 
     async ga4OrganicOverview(domainId, days) {
-      return ga4(await ga4OrganicOverview(domainId, days));
+      return ga4(await ga4OrganicOverview(domainId, days), days);
     },
     async ga4LandingPages(domainId, days) {
-      return ga4(await ga4LandingPages(domainId, days));
+      return ga4(await ga4LandingPages(domainId, days), days);
     },
     async ga4Channels(domainId, days) {
-      return ga4(await ga4Channels(domainId, days));
+      return ga4(await ga4Channels(domainId, days), days);
     },
   } as GoogleProvider;
 }

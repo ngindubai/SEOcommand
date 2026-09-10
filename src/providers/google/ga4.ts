@@ -59,7 +59,9 @@ async function propertyFor(domainId: DomainId): Promise<string> {
 }
 
 function dateRange(days: number) {
-  return { startDate: `${days}daysAgo`, endDate: "today" };
+  const endDate = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+  const startDate = new Date(Date.parse(endDate) - (days - 1) * 86_400_000).toISOString().slice(0, 10);
+  return { startDate, endDate };
 }
 
 function num(v: string | undefined): number {
@@ -159,6 +161,8 @@ export async function ga4Dashboard(domainId: DomainId): Promise<import("@/lib/da
   });
   return {
     startDate, endDate, breakdownStartDate, domainIds: [domainId],
+    qualityNote: seriesReport?.metadata?.subjectToThresholding || seriesReport?.metadata?.samplingMetadatas?.length ? "Google applied reporting limits or sampling; these figures may be incomplete." : undefined,
+    completeDateRange: Number(seriesReport?.rowCount ?? seriesReport?.rows?.length ?? 0) <= 180 && !seriesReport?.metadata?.subjectToThresholding && !(seriesReport?.metadata?.samplingMetadatas?.length),
     series: (seriesReport?.rows ?? []).map((r: any) => {
       const date = r.dimensionValues?.[0]?.value ?? "";
       const mv = r.metricValues ?? [];

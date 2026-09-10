@@ -375,14 +375,14 @@ export default function BacklinksPage() {
           hint="Transparent 0–100 composite"
         />
         <KpiCard
-          label="Total backlinks"
+          label="Backlinks in sample"
           value={backlinks ? fullNumber(backlinks.length) : "—"}
           hint="Fetched sample, up to 250 links"
         />
         <KpiCard
-          label="Referring domains"
+          label="Referring domains in sample"
           value={referringDomains ? fullNumber(referringDomains.length) : "—"}
-          hint="Unique linking hosts"
+          hint="Unique hosts in the fetched sample"
         />
         <KpiCard
           label="Follow links"

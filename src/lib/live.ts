@@ -63,7 +63,7 @@ export type DatasetKey = (typeof DATASETS)[number];
 
 export interface DS<T> {
   includedDomains?: number;
-  coverage?: { domainId: string; start: string | null; end: string | null }[];
+  coverage?: { domainId: string; start: string | null; end: string | null; included?: boolean }[];
   data: T;
   capturedOn: string;
   provenance: Provenance;
@@ -134,6 +134,7 @@ export interface DomainLiveBundle {
 
 /** Headline aggregates for the portfolio rail + portfolio page. */
 export interface DomainHeadline {
+  dataHealth?: ReturnType<typeof import("./source-health").sourceHealth>;
   searchPeriod?: { start: string | null; end: string | null; availableDays: number; clicks: number | null; impressions: number | null; position: number | null; clickChange: number | null };
   domainId: string;
   lastSync: string | null;

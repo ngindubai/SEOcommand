@@ -33,7 +33,8 @@ describe("audit reporting contracts", () => {
   });
   it("preserves older Analytics evidence and its own dates", () => {
     const data = bundle({ ga4_overview: source({ sessions: 473, engagedSessions: 300, engagementRate: 63.4, conversions: 65, screenPageViews: 800, totalUsers: 400, newUsers: 200 }) });
-    expect(analyticsPeriod(data, 7)).toMatchObject({ total: { sessions: 473, conversions: 65 }, start: "2026-08-01", end: "2026-08-28", snapshotOnly: true });
+    expect(analyticsPeriod(data, 28)).toMatchObject({ total: { sessions: 473, conversions: 65 }, start: "2026-08-01", end: "2026-08-28", snapshotOnly: true });
+    expect(analyticsPeriod(data, 7).total).toBeNull();
   });
   it("counts dated shipments, excluding approved work, invalid dates and shipments outside the report", () => {
     const records = [{ verification: {}, id: "approved" }, { id: "shipped", shippedAt: "2026-08-20", verification: {} }, { id: "outside", shippedAt: "2026-09-01", verification: {} }, { id: "bad-date", shippedAt: "unknown", verification: {} }, { id: "explicitly-unshipped", shippedAt: "2026-08-20", proof: { shipped: false }, verification: {} }];

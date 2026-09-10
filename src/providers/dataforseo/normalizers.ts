@@ -27,6 +27,12 @@ import type { BacklinkHistoryPoint, DetailedCrawlPage, KeywordGapRow } from "@/p
 
 type Row = Record<string, any>;
 
+/** A successful result with items:null is an empty report, not one result row. */
+function resultItems(rows: Row[]): Row[] {
+  return rows.length && Object.prototype.hasOwnProperty.call(rows[0], "items")
+    ? rows.flatMap((row) => Array.isArray(row.items) ? row.items : []) : rows;
+}
+
 function num(v: unknown, d = 0): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : d;
@@ -68,7 +74,7 @@ function classifyIntent(row: Row): SearchIntent {
 /* --------------------------- Labs: ranked keywords ---------------------- */
 
 export function normalizeRankedKeywords(rows: Row[], domainId: DomainId): Keyword[] {
-  const items: Row[] = rows[0]?.items ?? rows ?? [];
+  const items: Row[] = resultItems(rows);
   return items.map((it, i) => {
     const kd = it?.keyword_data ?? {};
     const kwInfo = kd?.keyword_info ?? {};
@@ -85,7 +91,7 @@ export function normalizeRankedKeywords(rows: Row[], domainId: DomainId): Keywor
       cpc: num(kwInfo?.cpc),
       competition: num(kwInfo?.competition),
       position,
-      prevPosition: num(serp?.rank_changes?.previous_rank_absolute, position ?? 0) || position,
+      prevPosition: numOrNull(serp?.rank_changes?.previous_rank_absolute),
       competitorPositions: {},
       trafficPotential: Math.round(num(it?.ranked_serp_element?.serp_item?.etv)),
       serpFeatures: [],
@@ -127,7 +133,7 @@ function intentOrNull(row: Row): SearchIntent | null {
  * difficulty, CPC, competition, intent, top-of-page bids, monthly history).
  */
 export function normalizeKeywordIdeas(rows: Row[]): KeywordResearchRow[] {
-  const items: Row[] = rows[0]?.items ?? rows ?? [];
+  const items: Row[] = resultItems(rows);
   return items
     .map((it): KeywordResearchRow => {
       const info = it?.keyword_info ?? {};
@@ -162,7 +168,7 @@ export function normalizeKeywordIdeas(rows: Row[]): KeywordResearchRow[] {
 }
 
 export function rankedKeywordsToSnapshots(rows: Row[], domainId: DomainId, capturedOn: string): RankSnapshot[] {
-  const items: Row[] = rows[0]?.items ?? rows ?? [];
+  const items: Row[] = resultItems(rows);
   return items
     .map((it): RankSnapshot | null => {
       const kd = it?.keyword_data ?? {};
@@ -174,7 +180,7 @@ export function rankedKeywordsToSnapshots(rows: Row[], domainId: DomainId, captu
         keyword: str(kd?.keyword),
         date: capturedOn,
         position,
-        prevPosition: num(serp?.rank_changes?.previous_rank_absolute, position),
+        prevPosition: numOrNull(serp?.rank_changes?.previous_rank_absolute),
         device: "desktop" as const,
         location: str(kd?.keyword_info?.location),
         url: str(serp?.url),
@@ -197,7 +203,7 @@ export function normalizeDomainOverview(rows: Row[]): {
   const bucket = (label: string, count: number): PositionBucket => ({
     label,
     count: num(count),
-    prevCount: num(count),
+    prevCount: null,
   });
   const buckets: PositionBucket[] = [
     bucket("1–3", num(metrics?.pos_1) + num(metrics?.pos_2_3)),
@@ -217,7 +223,7 @@ export function normalizeDomainOverview(rows: Row[]): {
 /* ------------------------- Labs: competitors ---------------------------- */
 
 export function normalizeCompetitors(rows: Row[], domainId: DomainId): Competitor[] {
-  const items: Row[] = rows[0]?.items ?? rows ?? [];
+  const items: Row[] = resultItems(rows);
   return items.map((it, i) => {
     const m = it?.metrics?.organic ?? {};
     return {
@@ -237,7 +243,7 @@ export function normalizeCompetitors(rows: Row[], domainId: DomainId): Competito
 /* ------------------------------ Backlinks ------------------------------- */
 
 export function normalizeBacklinks(rows: Row[], domainId: DomainId): Backlink[] {
-  const items: Row[] = rows[0]?.items ?? rows ?? [];
+  const items: Row[] = resultItems(rows);
   return items.map((it, i) => ({
     id: `${domainId}-dfs-bl-${i + 1}`,
     domainId,
@@ -255,7 +261,7 @@ export function normalizeBacklinks(rows: Row[], domainId: DomainId): Backlink[] 
 }
 
 export function normalizeReferringDomains(rows: Row[], domainId: DomainId): ReferringDomain[] {
-  const items: Row[] = rows[0]?.items ?? rows ?? [];
+  const items: Row[] = resultItems(rows);
   return items.map((it, i) => ({
     id: `${domainId}-dfs-rd-${i + 1}`,
     domainId,
@@ -282,7 +288,7 @@ export function backlinkSummaryCounts(rows: Row[]): {
 }
 
 export function normalizeBacklinkHistory(rows: Row[]): BacklinkHistoryPoint[] {
-  const items: Row[] = rows[0]?.items ?? rows ?? [];
+  const items: Row[] = resultItems(rows);
   return items.map((item) => ({
     date: str(item?.date).slice(0, 10),
     backlinks: num(item?.backlinks),
@@ -299,7 +305,7 @@ export function normalizeBacklinkHistory(rows: Row[]): BacklinkHistoryPoint[] {
 /* --------------------- Competitor and keyword gaps --------------------- */
 
 export function normalizeKeywordGaps(rows: Row[], competitorHost: string): KeywordGapRow[] {
-  const items: Row[] = rows[0]?.items ?? rows ?? [];
+  const items: Row[] = resultItems(rows);
   return items.map((item) => {
     const keyword = item?.keyword_data ?? {};
     const info = keyword?.keyword_info ?? {};
@@ -321,7 +327,7 @@ export function normalizeKeywordGaps(rows: Row[], competitorHost: string): Keywo
 /* -------------------------- OnPage page detail ------------------------- */
 
 export function normalizeOnPagePages(rows: Row[]): DetailedCrawlPage[] {
-  const items: Row[] = rows[0]?.items ?? rows ?? [];
+  const items: Row[] = resultItems(rows);
   return items.map((item) => {
     const meta = item?.meta ?? {};
     const pageTiming = item?.page_timing ?? {};

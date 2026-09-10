@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("./auth", () => ({ getGoogleAccessToken: vi.fn().mockResolvedValue("test-token") }));
 vi.mock("@/platform/site-store", () => ({ getManagedSite: vi.fn().mockResolvedValue({ ga4PropertyId: "123" }) }));
-import { ga4Dashboard } from "./ga4";
+import { ga4Dashboard, ga4OrganicOverview } from "./ga4";
 
 afterEach(() => vi.unstubAllGlobals());
 describe("GA4 dashboard collector", () => {
@@ -28,4 +28,13 @@ describe("GA4 dashboard collector", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 403, json: async () => ({ error: { message: "Denied" } }) }));
     await expect(ga4Dashboard("example")).rejects.toThrow("GA4 Data API 403");
   });
+});
+
+it("requests exactly 28 closed dates for Analytics totals", async () => {
+  const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ rows: [] }) });
+  vi.stubGlobal("fetch", fetcher);
+  await ga4OrganicOverview("example", 28);
+  const range = JSON.parse(fetcher.mock.calls[0][1].body).dateRanges[0];
+  expect((Date.parse(range.endDate) - Date.parse(range.startDate)) / 86400000 + 1).toBe(28);
+  expect(range.endDate < new Date().toISOString().slice(0, 10)).toBe(true);
 });

@@ -1,3 +1,4 @@
+import { GSC_DATA_LAG_DAYS } from "@/providers/google/config";
 import type { DomainId, Provenance } from "@/lib/types";
 import type { DerivedRecommendation } from "@/lib/live";
 import { getManagedSite, listManagedSites, paidJobsApproved } from "@/platform/site-store";
@@ -72,8 +73,10 @@ export interface DomainSyncReport {
 function prov(source: Provenance["source"], location: string, days = 28): Provenance {
   const now = new Date();
   const end = new Date(now);
-  const start = new Date(now);
-  start.setUTCDate(start.getUTCDate() - days);
+  if (source === "google-search-console") end.setUTCDate(end.getUTCDate() - GSC_DATA_LAG_DAYS);
+  if (source === "google-analytics") end.setUTCDate(end.getUTCDate() - 1);
+  const start = new Date(end);
+  start.setUTCDate(start.getUTCDate() - (days - 1));
   return {
     source,
     collectedAt: now.toISOString(),
@@ -83,6 +86,8 @@ function prov(source: Provenance["source"], location: string, days = 28): Proven
     device: "desktop",
     freshness: "fresh",
     mode: "live",
+    normalizationVersion: 2,
+    ...(source === "google-search-console" ? { periodNote: "Final Google data within the requested dates; the newest days may not yet be available." } : {}),
   };
 }
 
@@ -213,7 +218,7 @@ export async function syncDomain(
           keyword: row.keyword,
           date: today,
           position: row.position ?? 101,
-          prevPosition: row.previousPosition ?? row.position ?? 101,
+          prevPosition: row.previousPosition,
           device: row.device,
           location: String(row.locationCode),
           url: row.url ?? "",
