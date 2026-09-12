@@ -4,7 +4,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { drizzle } from "drizzle-orm/pglite";
 import { eq } from "drizzle-orm";
 import * as schema from "@/db/schema";
-import { commandRecords, saveCommandRecord } from "./command-store";
+import { commandRecords, completedIndexInspections, saveCommandRecord } from "./command-store";
 import { processCommandChecks, queueCommandCheck, queueCommandSchedules } from "./command-jobs";
 import { collectSpeed } from "./command-collect";
 import { POST } from "@/app/api/command/route";
@@ -103,4 +103,19 @@ it("retains the latest evidence for each tool when another tool has many recent 
   expect(records.find((row) => row.kind === "speed")?.payload.score).toBe(73);
   expect(records.find((row) => row.kind === "business")?.payload.total).toBe(12);
   expect(await testDb.select().from(schema.commandRecords)).toHaveLength(127);
+});
+
+
+it("reads latest completed indexing per URL beyond activity limits and keeps sites isolated", async () => {
+  const base = new Date("2026-09-10T10:00:00Z");
+  await testDb.insert(schema.commandRecords).values(Array.from({ length: 150 }, (_, i) => ({ siteSlug: "a", kind: "indexing", recordKey: `index-${i}`, status: "completed", payload: { url: `https://a.test/page-${i}`, verdict: "PASS" }, updatedAt: base })));
+  await testDb.insert(schema.commandRecords).values([
+    { siteSlug: "a", kind: "indexing", recordKey: "new-result", status: "completed", payload: { url: "https://a.test/page-0", verdict: "NEUTRAL" }, updatedAt: new Date("2026-09-11T10:00:00Z") },
+    { siteSlug: "a", kind: "indexing", recordKey: "failed-result", status: "failed", payload: { url: "https://a.test/page-0" }, updatedAt: new Date("2026-09-12T10:00:00Z") },
+    { siteSlug: "b", kind: "indexing", recordKey: "other-site", status: "completed", payload: { url: "https://b.test/", verdict: "PASS" } },
+  ]);
+  const records = await completedIndexInspections("a");
+  expect(records).toHaveLength(150);
+  expect(records.find((row) => row.payload.url === "https://a.test/page-0")?.payload.verdict).toBe("NEUTRAL");
+  expect(records.every((row) => row.siteSlug === "a" && row.status === "completed")).toBe(true);
 });

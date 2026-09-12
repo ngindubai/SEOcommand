@@ -14,6 +14,7 @@ import type { DS, GscTimeseriesPoint } from "@/lib/live";
 import { analyticsPeriod, searchPeriod } from "@/lib/reporting";
 import { percentageChange, searchSummary } from "@/lib/dashboard-data";
 import { PriorityTasks } from "@/components/dashboard/priority-tasks";
+import { WebsitePageCoverage } from "@/components/command/page-coverage";
 import { DataHealthSummary, NextActions, SiteBriefing, PortfolioDataHealth } from "@/components/command/overview-additions";
 import { SiteScanCentre } from "@/components/dashboard/site-scan-centre";
 import world from "@/components/dashboard/world-dots.json";
@@ -117,6 +118,7 @@ export default function PortfolioPage() {
       <div className="flex items-center gap-2"><button onClick={() => { live.refresh(); portfolio.refresh(); priorityTasks.refresh(); }} disabled={live.loading} className="flex items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1.5 text-sm text-muted disabled:opacity-50"><RefreshCw className={cn("h-3 w-3", live.loading && "animate-spin")} /> Reload saved data</button><button onClick={exportSearch} disabled={!gsc.current.length} className="flex items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1.5 text-sm text-muted disabled:opacity-50"><Download className="h-3 w-3" /> Export</button></div>
     </div>
     {live.error && <p role="alert" className="text-xs text-critical">Couldn’t refresh: {live.error}. Showing the last saved data.</p>}
+    {suffix && <WebsitePageCoverage key={`page-coverage:${scope}`} site={scope} />}
     <section aria-label="Performance summary" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       {[{ label: "Organic clicks", value: number(gscNow?.clicks), change: gsc.clickChange }, { label: "Search impressions", value: number(gscNow?.impressions), change: gsc.impressionChange }, { label: "Average search position", value: gscNow?.position?.toFixed(1) ?? "—", change: gsc.positionChange }, { label: "Organic key events", value: number(sessionNow?.conversions), change: null }].map((metric) => <Card key={metric.label} className="p-4"><p className="text-sm text-muted">{metric.label}</p><p className="mt-2 text-3xl font-semibold tracking-tight tnum">{metric.value}</p><div className="mt-2"><Delta value={metric.change} invert={metric.label.includes("position")} /></div></Card>)}
     </section>

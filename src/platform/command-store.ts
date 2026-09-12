@@ -8,6 +8,17 @@ const qaRecords: CommandRecord[] = [];
 function serialize(row: typeof schema.commandRecords.$inferSelect): CommandRecord {
   return { ...row, nextRunAt: row.nextRunAt?.toISOString() ?? null, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() };
 }
+
+/** Keep coverage independent of the 120-row activity-history window. */
+export async function completedIndexInspections(siteSlug: string): Promise<CommandRecord[]> {
+  if (process.env.QA_SYNTHETIC === "true") return qaRecords.filter((row) => row.siteSlug === siteSlug && row.kind === "indexing" && row.status === "completed");
+  if (!hasDatabase()) return [];
+  const url = sql<string>`${schema.commandRecords.payload}->>'url'`;
+  const rows = await db().selectDistinctOn([url]).from(schema.commandRecords)
+    .where(and(eq(schema.commandRecords.siteSlug, siteSlug), eq(schema.commandRecords.kind, "indexing"), eq(schema.commandRecords.status, "completed")))
+    .orderBy(url, desc(schema.commandRecords.updatedAt));
+  return rows.map(serialize);
+}
 export async function commandRecords(siteSlug: string): Promise<CommandRecord[]> {
   if (process.env.QA_SYNTHETIC === "true") return qaRecords.filter((row) => row.siteSlug === siteSlug);
   if (!hasDatabase()) return [];

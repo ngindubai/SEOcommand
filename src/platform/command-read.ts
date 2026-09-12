@@ -3,7 +3,8 @@ import { db, schema } from "@/db";
 import { sourceHealth } from "@/lib/source-health";
 import { buildDomainBundle } from "@/sync/bundle";
 import { hasDatabase } from "@/sync/store";
-import { commandRecords } from "./command-store";
+import { commandRecords, completedIndexInspections } from "./command-store";
+import { summarizePageCoverage } from "@/lib/page-coverage";
 import { getManagedSite } from "./site-store";
 import { groupCauses, segmentBrand, suggestLinks, unifiedPages, type BusinessResult, type CommandTask, type HealthRow, type PageEvidence, type SiteCommand, type TimelineEntry } from "@/lib/command-model";
 
@@ -27,10 +28,11 @@ export async function buildSiteCommand(siteSlug: string): Promise<SiteCommand> {
   const site = await getManagedSite(siteSlug);
   if (!site) throw new Error("Website not found.");
   const synthetic = process.env.QA_SYNTHETIC === "true";
-  const [bundle, records, inventory, work, jobs] = await Promise.all([
+  const [bundle, records, inventory, work, jobs, inspections] = await Promise.all([
     buildDomainBundle(siteSlug), commandRecords(siteSlug), pageInventory(siteSlug),
     hasDatabase() && !synthetic ? db().select().from(schema.workflowItems).where(eq(schema.workflowItems.domainSlug, siteSlug)).orderBy(desc(schema.workflowItems.updatedAt)).limit(500) : [],
     hasDatabase() && !synthetic ? db().select().from(schema.platformJobs).where(eq(schema.platformJobs.siteSlug, siteSlug)).orderBy(desc(schema.platformJobs.createdAt)).limit(30) : [],
+    completedIndexInspections(siteSlug),
   ]);
   const tasks: CommandTask[] = work.filter((row) => row.decision === "approved").map((row) => ({ id: row.id, title: row.title, status: row.status, targetUrl: row.targetUrl, shippedAt: row.shippedAt?.toISOString() ?? null, updatedAt: row.updatedAt.toISOString() }));
   const settings = records.find((row) => row.kind === "settings")?.payload ?? {};
@@ -42,7 +44,7 @@ export async function buildSiteCommand(siteSlug: string): Promise<SiteCommand> {
     if (!latestWatch.has(page.url)) latestWatch.set(page.url, page);
   }
   const evidence = inventory.pages.map((page) => { const direct = latestWatch.get(page.url); latestWatch.delete(page.url); return direct && direct.capturedAt > page.capturedAt ? direct : page; });
-  const pages = unifiedPages(site.host, bundle, [...evidence, ...latestWatch.values()], tasks, watched);
+  const pages = unifiedPages(site.host, bundle, [...evidence, ...latestWatch.values()], tasks, watched, inspections.map((row) => String(row.payload.url)));
   const timeline: TimelineEntry[] = [
     ...tasks.filter((row) => row.shippedAt).map((row) => ({ id: row.id, date: row.shippedAt!, title: row.title, type: "Shipped work", url: row.targetUrl, href: `/outcomes?site=${siteSlug}&item=${row.id}` })),
     ...records.filter((row) => row.kind === "timeline").map((row) => ({ id: row.id, date: String(row.payload.date), title: String(row.payload.title), type: String(row.payload.type), url: typeof row.payload.url === "string" ? row.payload.url : null, href: `/performance?site=${siteSlug}&view=timeline` })),
@@ -66,5 +68,5 @@ export async function buildSiteCommand(siteSlug: string): Promise<SiteCommand> {
     return { id: `${source.id}:${source.label}`, label: source.label, state, updatedAt: at, through: own?.through ?? null, href: !source.mapped ? `/sites/${siteSlug}/settings` : state === "ready" ? source.href : `/scan-centre?site=${siteSlug}&module=${source.id}`, detail: !source.mapped ? "Connect this website’s property" : latestFailed ? "Latest scan failed; any earlier saved data is retained" : !at ? "No saved results yet" : "Collection time and reporting period are shown separately", nextRunAt: next };
   });
   const business = records.find((row) => row.kind === "business" && row.status === "completed")?.payload as BusinessResult | undefined;
-  return { site: { id: site.id, name: site.name, host: site.host }, generatedAt: new Date().toISOString(), synthetic, storageAvailable: hasDatabase() || synthetic, bundle, pages, pageCoverage: { loaded: inventory.pages.length, saved: inventory.saved }, records: records.map((row) => row.kind === "baseline" ? { ...row, payload: { title: row.payload.title, pageCount: (row.payload.pages as unknown[] | undefined)?.length ?? 0, capturedAt: row.payload.capturedAt, coverage: row.payload.coverage } } : row), tasks, timeline, health, brandTerms, brand: segmentBrand(ds.gsc_queries?.data, brandTerms, ds.gsc_totals?.data.clicks ?? null), business: business ?? null, causes: groupCauses(ds.onpage?.data.issues ?? [], site.host), links: suggestLinks(pages, inventory.edges, site.host, inventory.capturedAt), permissions: { edit: false, scan: false, settings: false } };
+  return { site: { id: site.id, name: site.name, host: site.host }, generatedAt: new Date().toISOString(), synthetic, storageAvailable: hasDatabase() || synthetic, bundle, pages, pageCoverage: { loaded: inventory.pages.length, saved: inventory.saved }, pageStats: summarizePageCoverage({ host: site.host, pages, inspections }), records: [...records.filter((row) => row.kind !== "indexing" || row.status !== "completed"), ...inspections].map((row) => row.kind === "baseline" ? { ...row, payload: { title: row.payload.title, pageCount: (row.payload.pages as unknown[] | undefined)?.length ?? 0, capturedAt: row.payload.capturedAt, coverage: row.payload.coverage } } : row), tasks, timeline, health, brandTerms, brand: segmentBrand(ds.gsc_queries?.data, brandTerms, ds.gsc_totals?.data.clicks ?? null), business: business ?? null, causes: groupCauses(ds.onpage?.data.issues ?? [], site.host), links: suggestLinks(pages, inventory.edges, site.host, inventory.capturedAt), permissions: { edit: false, scan: false, settings: false } };
 }

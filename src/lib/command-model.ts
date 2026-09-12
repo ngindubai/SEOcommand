@@ -1,5 +1,6 @@
 import type { DomainLiveBundle } from "./live";
 import type { TechnicalIssue, GscRow } from "./types";
+import type { PageCoverageSummary } from "./page-coverage";
 
 export type CommandRecord = { id: string; siteSlug: string; kind: string; recordKey: string; status: string; payload: Record<string, unknown>; nextRunAt: string | null; createdAt: string; updatedAt: string };
 export type PageEvidence = { url: string; finalUrl: string | null; title: string | null; statusCode: number | null; canonical: string | null; indexable: boolean | null; hash: string | null; tracking: string[] | null; capturedAt: string; issues: string[] };
@@ -13,7 +14,7 @@ export type BusinessRow = { date: string; url: string; event: string; category: 
 export type BusinessResult = { collectedAt: string; start: string; end: string; rows: BusinessRow[]; mapping: Record<string, string>; rowCount: number; truncated: boolean; thresholded: boolean };
 export type TimelineEntry = { id: string; date: string; title: string; type: string; url: string | null; href: string };
 export type HealthRow = { id: string; label: string; state: "ready" | "stale" | "missing" | "needs_connection" | "failed"; updatedAt: string | null; through: string | null; href: string; detail: string; nextRunAt?: string | null };
-export type SiteCommand = { site: { id: string; name: string; host: string }; generatedAt: string; synthetic: boolean; storageAvailable: boolean; bundle: DomainLiveBundle; pages: PageSummary[]; pageCoverage: { saved: number; loaded: number }; causes: CauseGroup[]; links: LinkSuggestion[]; records: CommandRecord[]; tasks: CommandTask[]; timeline: TimelineEntry[]; health: HealthRow[]; brandTerms: string[]; brand: ReturnType<typeof segmentBrand>; business: BusinessResult | null; permissions: { edit: boolean; scan: boolean; settings: boolean } };
+export type SiteCommand = { site: { id: string; name: string; host: string }; generatedAt: string; synthetic: boolean; storageAvailable: boolean; bundle: DomainLiveBundle; pages: PageSummary[]; pageCoverage: { saved: number; loaded: number }; pageStats: PageCoverageSummary; causes: CauseGroup[]; links: LinkSuggestion[]; records: CommandRecord[]; tasks: CommandTask[]; timeline: TimelineEntry[]; health: HealthRow[]; brandTerms: string[]; brand: ReturnType<typeof segmentBrand>; business: BusinessResult | null; permissions: { edit: boolean; scan: boolean; settings: boolean } };
 
 /** Preserve query strings and trailing slashes: they can represent distinct pages. */
 export function siteUrl(value: string, host: string): string | null {
@@ -44,7 +45,7 @@ export function segmentBrand(rows: GscRow[] | undefined, terms: string[], totalC
   return { available: Boolean(rows), configured: aliases.length > 0, brand: totals(branded), nonBrand: totals(nonBrand), coveragePct: totalClicks != null && totalClicks > 0 ? Math.min(100, classified / totalClicks * 100) : null, rows: (rows ?? []).map((row) => ({ ...row, brand: aliases.length ? branded.includes(row) : null })) };
 }
 
-export function unifiedPages(host: string, bundle: DomainLiveBundle, crawls: PageEvidence[], tasks: CommandTask[], watched: string[]): PageSummary[] {
+export function unifiedPages(host: string, bundle: DomainLiveBundle, crawls: PageEvidence[], tasks: CommandTask[], watched: string[], inspected: string[] = []): PageSummary[] {
   const pages = new Map<string, PageSummary>();
   const get = (value: string) => {
     const key = urlKey(value, host), url = siteUrl(value, host);
@@ -60,7 +61,7 @@ export function unifiedPages(host: string, bundle: DomainLiveBundle, crawls: Pag
   for (const row of bundle.datasets.backlinks?.data ?? []) { const page = get(row.targetUrl); if (page && row.status !== "lost") page.backlinks = (page.backlinks ?? 0) + 1; }
   for (const issue of bundle.datasets.onpage?.data.issues ?? []) if (issue.status !== "resolved") for (const url of issue.samplePages) { const page = get(url); if (page && !page.issues.some((item) => item.id === issue.id)) page.issues.push(issue); }
   for (const row of tasks) { const page = row.targetUrl && get(row.targetUrl); if (page) page.tasks.push(row); }
-  for (const url of watched) get(url);
+  for (const url of [...watched, ...inspected]) get(url);
   return [...pages.values()].sort((a, b) => Number(b.watched) - Number(a.watched) || (b.clicks ?? -1) - (a.clicks ?? -1));
 }
 
